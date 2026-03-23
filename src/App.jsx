@@ -862,30 +862,29 @@ body{background:var(--bg);color:var(--tx);font-family:'Barlow',sans-serif}
 .match-card:hover{border-color:rgba(201,168,76,.3)}
 .match-hdr{padding:6px 16px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx3);font-family:'Barlow Condensed',sans-serif}
 
-/* Desktop: equipo — marcador — equipo en una fila */
+/* Desktop: Local — Marcador — Visitante en una sola fila */
 .match-body{padding:14px 16px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
 .team{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:1px;line-height:1.3}
-.team.home{text-align:right}.team.away{text-align:left}
+.team.home{text-align:right}
+.team.away{text-align:left}
+.match-center{display:contents}
 
-/* Mobile: layout tipo tablero de fútbol
-   [  NOMBRE LOCAL  ]  [  MARCADOR  ]  [  NOMBRE VISITANTE  ]
-   todos en una sola fila, teams reducidos pero en la misma línea */
+/* Mobile: reorganiza en dos filas
+   Fila 1: [Local vs Visitante] — los nombres separados a los extremos
+   Fila 2: [input] — [input] centrados                                */
 @media(max-width:600px){
   .match-body{
-    display:grid;
-    grid-template-columns:1fr auto 1fr;
+    display:flex;
+    flex-wrap:wrap;
     align-items:center;
-    gap:6px;
-    padding:12px 10px;
+    gap:6px 4px;
+    padding:12px 14px;
   }
-  .team{font-size:11px;letter-spacing:0}
-  .team.home{text-align:right}
-  .team.away{text-align:left}
-  .score-fin{font-size:20px;gap:4px;min-width:52px;justify-content:center}
-  .score-sep{font-size:14px}
-  .score-row{gap:4px}
-  .sinput{width:38px;height:38px;font-size:17px}
-  .pred-btn{padding:6px 8px;font-size:10px;letter-spacing:1px}
+  /* Nombres ocupan la primera fila completa */
+  .team.home{order:1;flex:1;text-align:left}
+  .team.away{order:2;flex:1;text-align:right}
+  /* Centro (inputs/score) ocupa la segunda fila completa */
+  .match-center{display:block;order:3;width:100%;flex-basis:100%}
 }
 
 .score-fin{display:flex;align-items:center;gap:7px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--gold);justify-content:center;min-width:64px}
@@ -896,6 +895,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Barlow',sans-serif}
 .pred-btn{background:var(--gold);color:#080c14;border:none;border-radius:2px;padding:6px 12px;font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:2px;cursor:pointer;transition:background .2s}
 .pred-btn:hover{background:var(--gold2)}.pred-btn.saved{background:var(--green);color:#fff}
 .pred-btn:disabled{opacity:.45;cursor:wait}
+.save-row{display:flex;justify-content:center;padding:8px 16px 12px;border-top:1px solid rgba(255,255,255,.04)}
 .pred-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(0,200,120,.09);border:1px solid rgba(0,200,120,.2);border-radius:2px;padding:3px 8px;font-size:10px;color:var(--green);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px}
 .pts-badge{background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.28);border-radius:2px;padding:3px 7px;font-size:10px;color:var(--gold);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;margin-left:4px}
 .admin-footer{padding:8px 16px;background:rgba(255,68,68,.03);border-top:1px solid var(--bd);display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
@@ -1821,11 +1821,13 @@ function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
         <span>{match.stage} — {match.date} {match.time}</span>
         <span className={"status-badge "+statusClass(match.status)}>{match.status==="finished"?"Finalizado":match.status==="active"?"En curso":"Pendiente"}</span>
       </div>
-      <div className="match-body">
+
+      {/* ── DESKTOP: Local | Centro | Visitante en una fila ───── */}
+      <div className="match-body match-body-desktop">
         <div className={"team home"+(match.homeTeam?.startsWith("TBD:")?" tbd":"")}>
           {match.homeTeam?.startsWith("TBD:") ? "❓ "+match.homeTeam.slice(4) : match.homeTeam}
         </div>
-        <div>
+        <div className="match-center">
           {match.status==="finished"?(
             <div className="score-fin"><span>{match.homeScore}</span><span className="score-sep">–</span><span>{match.awayScore}</span></div>
           ):match.homeTeam?.startsWith("TBD:")||match.awayTeam?.startsWith("TBD:")?(
@@ -1835,10 +1837,6 @@ function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
               <input className="sinput" type="number" min="0" max="30" value={h} onChange={e=>{setH(e.target.value);setSaved(false)}}/>
               <span style={{color:"var(--tx3)",fontFamily:"Bebas Neue",fontSize:17}}>–</span>
               <input className="sinput" type="number" min="0" max="30" value={a} onChange={e=>{setA(e.target.value);setSaved(false)}}/>
-              <button className={"pred-btn"+(saved?" saved":"")} disabled={saving}
-                onClick={async()=>{if(h===""||a==="")return;setSaving(true);const r=await onSave(match.id,h,a);setSaving(false);if(r?.success)setSaved(true);}}>
-                {saving?"...":saved?"✓":"GUARDAR"}
-              </button>
             </div>
           )}
           {match.myPrediction&&(
@@ -1852,6 +1850,17 @@ function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
           {match.awayTeam?.startsWith("TBD:") ? "❓ "+match.awayTeam.slice(4) : match.awayTeam}
         </div>
       </div>
+
+      {/* Botón GUARDAR — fila propia debajo del marcador */}
+      {match.status!=="finished"&&!match.homeTeam?.startsWith("TBD:")&&!match.awayTeam?.startsWith("TBD:")&&(
+        <div className="save-row">
+          <button className={"pred-btn"+(saved?" saved":"")} disabled={saving}
+            onClick={async()=>{if(h===""||a==="")return;setSaving(true);const r=await onSave(match.id,h,a);setSaving(false);if(r?.success)setSaved(true);}}>
+            {saving?"...":saved?"✓ GUARDADO":"GUARDAR PRONÓSTICO"}
+          </button>
+        </div>
+      )}
+
       {isAdmin&&match.status!=="finished"&&(
         <div className="admin-footer">
           <span style={{fontSize:9,letterSpacing:2,color:"#ff8888",fontFamily:"Barlow Condensed",textTransform:"uppercase"}}>Admin resultado:</span>
