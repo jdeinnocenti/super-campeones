@@ -861,10 +861,34 @@ body{background:var(--bg);color:var(--tx);font-family:'Barlow',sans-serif}
 .match-card{background:var(--sf);border:1px solid var(--bd);border-radius:2px;overflow:hidden;transition:border-color .2s}
 .match-card:hover{border-color:rgba(201,168,76,.3)}
 .match-hdr{padding:6px 16px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx3);font-family:'Barlow Condensed',sans-serif}
+
+/* Desktop: equipo — marcador — equipo en una fila */
 .match-body{padding:14px 16px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
-.team{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:1px}
+.team{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:1px;line-height:1.3}
 .team.home{text-align:right}.team.away{text-align:left}
-.score-fin{display:flex;align-items:center;gap:7px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--gold);justify-content:center}
+
+/* Mobile: layout tipo tablero de fútbol
+   [  NOMBRE LOCAL  ]  [  MARCADOR  ]  [  NOMBRE VISITANTE  ]
+   todos en una sola fila, teams reducidos pero en la misma línea */
+@media(max-width:600px){
+  .match-body{
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    align-items:center;
+    gap:6px;
+    padding:12px 10px;
+  }
+  .team{font-size:11px;letter-spacing:0}
+  .team.home{text-align:right}
+  .team.away{text-align:left}
+  .score-fin{font-size:20px;gap:4px;min-width:52px;justify-content:center}
+  .score-sep{font-size:14px}
+  .score-row{gap:4px}
+  .sinput{width:38px;height:38px;font-size:17px}
+  .pred-btn{padding:6px 8px;font-size:10px;letter-spacing:1px}
+}
+
+.score-fin{display:flex;align-items:center;gap:7px;font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--gold);justify-content:center;min-width:64px}
 .score-sep{color:var(--tx3);font-size:17px}
 .score-row{display:flex;align-items:center;gap:6px;justify-content:center}
 .sinput{width:46px;height:46px;background:var(--bg);border:2px solid var(--bd);border-radius:2px;color:var(--tx);font-family:'Bebas Neue',sans-serif;font-size:20px;text-align:center;outline:none;transition:border-color .2s}
@@ -945,7 +969,6 @@ details[open] summary{margin-bottom:0}
   .nav-tabs{display:none}
   .content{padding:14px 12px}
   .match-body{grid-template-columns:1fr;gap:8px}.team.home,.team.away{text-align:center}
-  .score-row{justify-content:center}
   .t-hero-banner{flex-direction:column;text-align:center;padding:18px;gap:12px}
   .form-grid{grid-template-columns:1fr}.form-grid .full{grid-column:span 1}
   .lb-row{grid-template-columns:36px 1fr 58px}.lb-row .lb-n{display:none}
