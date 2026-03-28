@@ -1,697 +1,801 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, createContext, useContext } from "react";
 
 // ============================================================
-// SECURITY — OWASP Top 10
+// CAPA SOLID — Super Campeones
+// Cada sección implementa un principio específico.
+// Este archivo se inserta reemplazando Security + Store + API
+// en el archivo principal.
 // ============================================================
-const Security = {
-  sanitize: (v) => {
+
+// ─────────────────────────────────────────────────────────────
+// S — SINGLE RESPONSIBILITY
+// Cada clase/objeto tiene una única razón para cambiar.
+// Security se divide en 4 responsabilidades independientes.
+// ─────────────────────────────────────────────────────────────
+
+/** Solo sanitiza strings de entrada del usuario (A03 OWASP) */
+const Sanitizer = {
+  clean: (v, maxLen = 300) => {
     if (typeof v !== "string") return "";
-    return v.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-            .replace(/"/g,"&quot;").replace(/'/g,"&#x27;").replace(/\//g,"&#x2F;").slice(0,300);
+    return v
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;").replace(/'/g,"&#x27;").replace(/\//g,"&#x2F;")
+      .slice(0, maxLen);
   },
-  generateToken: (uid) => {
-    const p={userId:uid,exp:Date.now()+3600000,iat:Date.now()};
-    return btoa(JSON.stringify(p))+"."+Math.random().toString(36).slice(2);
-  },
-  validateToken: (tok) => {
-    try { const p=JSON.parse(atob(tok.split(".")[0])); return p.exp>Date.now()?p:null; }
-    catch { return null; }
-  },
-  validateScore: (s) => { const n=parseInt(s); return !isNaN(n)&&n>=0&&n<=30; },
-  validateUsername: (u) => /^[a-zA-Z0-9_]{3,20}$/.test(u),
-  validatePassword: (p) => typeof p==="string"&&p.length>=4&&p.length<=50,
-  hashPassword: async (pwd) => {
-    const enc = new TextEncoder().encode(pwd + "sc_salt_2024");
-    const buf = await crypto.subtle.digest("SHA-256", enc);
-    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
-  },
-  _rl:{},
-  rateLimit:(key,max=5,ms=60000)=>{
-    const now=Date.now();
-    Security._rl[key]=(Security._rl[key]||[]).filter(t=>now-t<ms);
-    if(Security._rl[key].length>=max) return false;
-    Security._rl[key].push(now); return true;
-  }
 };
 
-// ============================================================
-// SEED DATA
-// ============================================================
-const AVATARS=["⚽","🌟","🎯","🏅","🔥","⚡","🦁","🐯","🦊","🐺","🎪","🎭","🎨","🎸","🚀","💎","🌈","🦅","🐉","🏆"];
-
-const makePwdHash = async () => {
-  // Pre-computed hashes for demo (admin:admin123, players:player123)
-  // Using synchronous fallback for seed since crypto.subtle is async
-  return "demo_hash";
+/** Solo valida formatos de datos de dominio */
+const Validator = {
+  score:    (s) => { const n = parseInt(s); return !isNaN(n) && n >= 0 && n <= 30; },
+  username: (u) => /^[a-zA-Z0-9_]{3,20}$/.test(u),
+  password: (p) => typeof p === "string" && p.length >= 4 && p.length <= 50,
+  role:     (r) => ["admin","user"].includes(r),
+  slot:     (s) => s === "away" ? "away" : "home",
 };
 
-const SEED_USERS=[
-  {id:"u1",username:"admin",  passwordHash:"demo_hash",role:"admin",  avatar:"🏆",active:true, createdAt:"2024-01-01"},
-  {id:"u2",username:"diego10",passwordHash:"demo_hash",role:"user",   avatar:"⚽",active:true, createdAt:"2024-01-01"},
-  {id:"u3",username:"leo30",  passwordHash:"demo_hash",role:"user",   avatar:"🌟",active:true, createdAt:"2024-01-01"},
-  {id:"u4",username:"cr7fan", passwordHash:"demo_hash",role:"user",   avatar:"🎯",active:true, createdAt:"2024-01-01"},
-];
-
-const SEED_TOURNAMENTS=[
-  {id:"t1",name:"FIFA World Cup 2026",shortName:"World Cup 2026",region:"Global — Canadá, México y USA",
-   status:"upcoming",logo:"🌍",startDate:"2026-06-11",endDate:"2026-07-19",
-   groups:["A","B","C","D","E","F","G","H","I","J","K","L","R32","R16","QF","SF","3P","FIN"],source:"manual"},
-];
-
-// TBD format: "TBD:descripción" — se actualiza automáticamente cuando hay ganadores/perdedores
-
-const SEED_MATCHES_T1=[
-  // GRUPO A
-  {id:"gA1",tId:"t1",group:"A",homeTeam:"México 🇲🇽",awayTeam:"Sudáfrica 🇿🇦",date:"2026-06-11",time:"15:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gA2",tId:"t1",group:"A",homeTeam:"Corea del Sur 🇰🇷",awayTeam:"TBD:Play-off UEFA D",date:"2026-06-11",time:"22:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gA3",tId:"t1",group:"A",homeTeam:"TBD:Play-off UEFA D",awayTeam:"Sudáfrica 🇿🇦",date:"2026-06-18",time:"18:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gA4",tId:"t1",group:"A",homeTeam:"México 🇲🇽",awayTeam:"Corea del Sur 🇰🇷",date:"2026-06-18",time:"23:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gA5",tId:"t1",group:"A",homeTeam:"TBD:Play-off UEFA D",awayTeam:"México 🇲🇽",date:"2026-06-24",time:"21:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gA6",tId:"t1",group:"A",homeTeam:"Sudáfrica 🇿🇦",awayTeam:"Corea del Sur 🇰🇷",date:"2026-06-24",time:"21:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO B
-  {id:"gB1",tId:"t1",group:"B",homeTeam:"Canadá 🇨🇦",awayTeam:"TBD:Play-off UEFA A",date:"2026-06-12",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gB2",tId:"t1",group:"B",homeTeam:"Qatar 🇶🇦",awayTeam:"Suiza 🇨🇭",date:"2026-06-13",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gB3",tId:"t1",group:"B",homeTeam:"Suiza 🇨🇭",awayTeam:"TBD:Play-off UEFA A",date:"2026-06-18",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gB4",tId:"t1",group:"B",homeTeam:"Canadá 🇨🇦",awayTeam:"Qatar 🇶🇦",date:"2026-06-18",time:"18:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gB5",tId:"t1",group:"B",homeTeam:"Suiza 🇨🇭",awayTeam:"Canadá 🇨🇦",date:"2026-06-24",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gB6",tId:"t1",group:"B",homeTeam:"TBD:Play-off UEFA A",awayTeam:"Qatar 🇶🇦",date:"2026-06-24",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO C
-  {id:"gC1",tId:"t1",group:"C",homeTeam:"Brasil 🇧🇷",awayTeam:"Marruecos 🇲🇦",date:"2026-06-13",time:"00:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gC2",tId:"t1",group:"C",homeTeam:"Haití 🇭🇹",awayTeam:"Escocia 🏴󠁧󠁢󠁳󠁣󠁴󠁿",date:"2026-06-14",time:"03:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gC3",tId:"t1",group:"C",homeTeam:"Escocia 🏴󠁧󠁢󠁳󠁣󠁴󠁿",awayTeam:"Marruecos 🇲🇦",date:"2026-06-19",time:"00:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gC4",tId:"t1",group:"C",homeTeam:"Brasil 🇧🇷",awayTeam:"Haití 🇭🇹",date:"2026-06-20",time:"03:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gC5",tId:"t1",group:"C",homeTeam:"Escocia 🏴󠁧󠁢󠁳󠁣󠁴󠁿",awayTeam:"Brasil 🇧🇷",date:"2026-06-24",time:"00:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gC6",tId:"t1",group:"C",homeTeam:"Marruecos 🇲🇦",awayTeam:"Haití 🇭🇹",date:"2026-06-24",time:"00:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO D
-  {id:"gD1",tId:"t1",group:"D",homeTeam:"Estados Unidos 🇺🇸",awayTeam:"Paraguay 🇵🇾",date:"2026-06-12",time:"03:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gD2",tId:"t1",group:"D",homeTeam:"Australia 🇦🇺",awayTeam:"TBD:Play-off UEFA C",date:"2026-06-14",time:"03:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gD3",tId:"t1",group:"D",homeTeam:"Estados Unidos 🇺🇸",awayTeam:"Australia 🇦🇺",date:"2026-06-19",time:"21:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gD4",tId:"t1",group:"D",homeTeam:"TBD:Play-off UEFA C",awayTeam:"Paraguay 🇵🇾",date:"2026-06-20",time:"03:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gD5",tId:"t1",group:"D",homeTeam:"TBD:Play-off UEFA C",awayTeam:"Estados Unidos 🇺🇸",date:"2026-06-25",time:"02:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gD6",tId:"t1",group:"D",homeTeam:"Paraguay 🇵🇾",awayTeam:"Australia 🇦🇺",date:"2026-06-25",time:"02:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO E
-  {id:"gE1",tId:"t1",group:"E",homeTeam:"Alemania 🇩🇪",awayTeam:"Curazao 🇨🇼",date:"2026-06-14",time:"19:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gE2",tId:"t1",group:"E",homeTeam:"Costa de Marfil 🇨🇮",awayTeam:"Ecuador 🇪🇨",date:"2026-06-15",time:"01:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gE3",tId:"t1",group:"E",homeTeam:"Alemania 🇩🇪",awayTeam:"Costa de Marfil 🇨🇮",date:"2026-06-20",time:"20:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gE4",tId:"t1",group:"E",homeTeam:"Ecuador 🇪🇨",awayTeam:"Curazao 🇨🇼",date:"2026-06-21",time:"02:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gE5",tId:"t1",group:"E",homeTeam:"Ecuador 🇪🇨",awayTeam:"Alemania 🇩🇪",date:"2026-06-25",time:"20:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gE6",tId:"t1",group:"E",homeTeam:"Curazao 🇨🇼",awayTeam:"Costa de Marfil 🇨🇮",date:"2026-06-25",time:"20:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO F
-  {id:"gF1",tId:"t1",group:"F",homeTeam:"Países Bajos 🇳🇱",awayTeam:"Japón 🇯🇵",date:"2026-06-14",time:"22:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gF2",tId:"t1",group:"F",homeTeam:"TBD:Play-off UEFA B",awayTeam:"Túnez 🇹🇳",date:"2026-06-15",time:"04:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gF3",tId:"t1",group:"F",homeTeam:"Países Bajos 🇳🇱",awayTeam:"TBD:Play-off UEFA B",date:"2026-06-20",time:"19:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gF4",tId:"t1",group:"F",homeTeam:"Túnez 🇹🇳",awayTeam:"Japón 🇯🇵",date:"2026-06-21",time:"04:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gF5",tId:"t1",group:"F",homeTeam:"Japón 🇯🇵",awayTeam:"TBD:Play-off UEFA B",date:"2026-06-25",time:"19:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gF6",tId:"t1",group:"F",homeTeam:"Túnez 🇹🇳",awayTeam:"Países Bajos 🇳🇱",date:"2026-06-25",time:"19:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO G
-  {id:"gG1",tId:"t1",group:"G",homeTeam:"Bélgica 🇧🇪",awayTeam:"Egipto 🇪🇬",date:"2026-06-15",time:"22:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gG2",tId:"t1",group:"G",homeTeam:"Irán 🇮🇷",awayTeam:"Nueva Zelanda 🇳🇿",date:"2026-06-16",time:"04:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gG3",tId:"t1",group:"G",homeTeam:"Bélgica 🇧🇪",awayTeam:"Irán 🇮🇷",date:"2026-06-21",time:"21:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gG4",tId:"t1",group:"G",homeTeam:"Nueva Zelanda 🇳🇿",awayTeam:"Egipto 🇪🇬",date:"2026-06-22",time:"03:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gG5",tId:"t1",group:"G",homeTeam:"Egipto 🇪🇬",awayTeam:"Irán 🇮🇷",date:"2026-06-26",time:"23:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gG6",tId:"t1",group:"G",homeTeam:"Nueva Zelanda 🇳🇿",awayTeam:"Bélgica 🇧🇪",date:"2026-06-26",time:"23:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO H
-  {id:"gH1",tId:"t1",group:"H",homeTeam:"España 🇪🇸",awayTeam:"Cabo Verde 🇨🇻",date:"2026-06-15",time:"19:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gH2",tId:"t1",group:"H",homeTeam:"Arabia Saudita 🇸🇦",awayTeam:"Uruguay 🇺🇾",date:"2026-06-16",time:"00:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gH3",tId:"t1",group:"H",homeTeam:"España 🇪🇸",awayTeam:"Arabia Saudita 🇸🇦",date:"2026-06-21",time:"18:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gH4",tId:"t1",group:"H",homeTeam:"Uruguay 🇺🇾",awayTeam:"Cabo Verde 🇨🇻",date:"2026-06-22",time:"00:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gH5",tId:"t1",group:"H",homeTeam:"Cabo Verde 🇨🇻",awayTeam:"Arabia Saudita 🇸🇦",date:"2026-06-27",time:"02:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gH6",tId:"t1",group:"H",homeTeam:"Uruguay 🇺🇾",awayTeam:"España 🇪🇸",date:"2026-06-27",time:"02:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO I
-  {id:"gI1",tId:"t1",group:"I",homeTeam:"Francia 🇫🇷",awayTeam:"Senegal 🇸🇳",date:"2026-06-16",time:"21:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gI2",tId:"t1",group:"I",homeTeam:"TBD:Play-off Intercontinental 2",awayTeam:"Noruega 🇳🇴",date:"2026-06-17",time:"00:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gI3",tId:"t1",group:"I",homeTeam:"Francia 🇫🇷",awayTeam:"TBD:Play-off Intercontinental 2",date:"2026-06-22",time:"23:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gI4",tId:"t1",group:"I",homeTeam:"Noruega 🇳🇴",awayTeam:"Senegal 🇸🇳",date:"2026-06-23",time:"02:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gI5",tId:"t1",group:"I",homeTeam:"Noruega 🇳🇴",awayTeam:"Francia 🇫🇷",date:"2026-06-26",time:"19:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gI6",tId:"t1",group:"I",homeTeam:"Senegal 🇸🇳",awayTeam:"TBD:Play-off Intercontinental 2",date:"2026-06-27",time:"19:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO J
-  {id:"gJ1",tId:"t1",group:"J",homeTeam:"Argentina 🇦🇷",awayTeam:"Argelia 🇩🇿",date:"2026-06-17",time:"03:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gJ2",tId:"t1",group:"J",homeTeam:"Austria 🇦🇹",awayTeam:"Jordania 🇯🇴",date:"2026-06-17",time:"04:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gJ3",tId:"t1",group:"J",homeTeam:"Argentina 🇦🇷",awayTeam:"Austria 🇦🇹",date:"2026-06-22",time:"19:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gJ4",tId:"t1",group:"J",homeTeam:"Jordania 🇯🇴",awayTeam:"Argelia 🇩🇿",date:"2026-06-23",time:"03:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gJ5",tId:"t1",group:"J",homeTeam:"Argelia 🇩🇿",awayTeam:"Austria 🇦🇹",date:"2026-06-28",time:"02:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gJ6",tId:"t1",group:"J",homeTeam:"Jordania 🇯🇴",awayTeam:"Argentina 🇦🇷",date:"2026-06-28",time:"02:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO K
-  {id:"gK1",tId:"t1",group:"K",homeTeam:"Portugal 🇵🇹",awayTeam:"TBD:Play-off Intercontinental 1",date:"2026-06-17",time:"19:00",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gK2",tId:"t1",group:"K",homeTeam:"Uzbekistán 🇺🇿",awayTeam:"Colombia 🇨🇴",date:"2026-06-18",time:"04:00",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gK3",tId:"t1",group:"K",homeTeam:"Portugal 🇵🇹",awayTeam:"Uzbekistán 🇺🇿",date:"2026-06-23",time:"19:00",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gK4",tId:"t1",group:"K",homeTeam:"Colombia 🇨🇴",awayTeam:"TBD:Play-off Intercontinental 1",date:"2026-06-24",time:"04:00",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gK5",tId:"t1",group:"K",homeTeam:"Colombia 🇨🇴",awayTeam:"Portugal 🇵🇹",date:"2026-06-28",time:"01:30",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gK6",tId:"t1",group:"K",homeTeam:"TBD:Play-off Intercontinental 1",awayTeam:"Uzbekistán 🇺🇿",date:"2026-06-28",time:"01:30",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
-  // GRUPO L
-  {id:"gL1",tId:"t1",group:"L",homeTeam:"Inglaterra 🏴󠁧󠁢󠁥󠁮󠁧󠁿",awayTeam:"Croacia 🇭🇷",date:"2026-06-17",time:"22:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gL2",tId:"t1",group:"L",homeTeam:"Ghana 🇬🇭",awayTeam:"Panamá 🇵🇦",date:"2026-06-18",time:"01:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gL3",tId:"t1",group:"L",homeTeam:"Inglaterra 🏴󠁧󠁢󠁥󠁮󠁧󠁿",awayTeam:"Ghana 🇬🇭",date:"2026-06-23",time:"22:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gL4",tId:"t1",group:"L",homeTeam:"Panamá 🇵🇦",awayTeam:"Croacia 🇭🇷",date:"2026-06-24",time:"01:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gL5",tId:"t1",group:"L",homeTeam:"Panamá 🇵🇦",awayTeam:"Inglaterra 🏴󠁧󠁢󠁥󠁮󠁧󠁿",date:"2026-06-27",time:"23:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"gL6",tId:"t1",group:"L",homeTeam:"Croacia 🇭🇷",awayTeam:"Ghana 🇬🇭",date:"2026-06-27",time:"23:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
-  // RONDA DE 32
-  {id:"r32_1",tId:"t1",group:"R32",homeTeam:"TBD:2° Grupo A",awayTeam:"TBD:2° Grupo B",date:"2026-06-28",time:"21:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_2",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo C",awayTeam:"TBD:2° Grupo F",date:"2026-06-29",time:"19:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_3",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo E",awayTeam:"TBD:Mejor 3° A/B/C/D/F",date:"2026-06-29",time:"22:30",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_4",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo F",awayTeam:"TBD:2° Grupo C",date:"2026-06-30",time:"03:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_5",tId:"t1",group:"R32",homeTeam:"TBD:2° Grupo E",awayTeam:"TBD:2° Grupo I",date:"2026-06-30",time:"19:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_6",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo I",awayTeam:"TBD:Mejor 3° C/D/F/G/H",date:"2026-07-01",time:"01:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_7",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo A",awayTeam:"TBD:Mejor 3° C/E/F/H/I",date:"2026-07-01",time:"03:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_8",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo L",awayTeam:"TBD:Mejor 3° E/H/I/J/K",date:"2026-07-01",time:"18:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_9",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo G",awayTeam:"TBD:Mejor 3° A/E/H/I/J",date:"2026-07-02",time:"20:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_10",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo D",awayTeam:"TBD:Mejor 3° B/E/F/I/J",date:"2026-07-02",time:"02:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_11",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo H",awayTeam:"TBD:2° Grupo J",date:"2026-07-02",time:"21:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_12",tId:"t1",group:"R32",homeTeam:"TBD:2° Grupo K",awayTeam:"TBD:2° Grupo L",date:"2026-07-03",time:"01:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_13",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo B",awayTeam:"TBD:Mejor 3° E/F/G/I/J",date:"2026-07-03",time:"03:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_14",tId:"t1",group:"R32",homeTeam:"TBD:2° Grupo D",awayTeam:"TBD:2° Grupo G",date:"2026-07-03",time:"20:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_15",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo J",awayTeam:"TBD:2° Grupo H",date:"2026-07-04",time:"00:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r32_16",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo K",awayTeam:"TBD:Mejor 3° D/E/I/J/L",date:"2026-07-04",time:"01:30",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
-  // OCTAVOS DE FINAL
-  {id:"r16_1",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-1",awayTeam:"TBD:Gan. R32-2",date:"2026-07-04",time:"19:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r16_2",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-3",awayTeam:"TBD:Gan. R32-4",date:"2026-07-05",time:"01:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r16_3",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-5",awayTeam:"TBD:Gan. R32-6",date:"2026-07-05",time:"22:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r16_4",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-7",awayTeam:"TBD:Gan. R32-8",date:"2026-07-06",time:"02:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r16_5",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-9",awayTeam:"TBD:Gan. R32-10",date:"2026-07-06",time:"21:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r16_6",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-11",awayTeam:"TBD:Gan. R32-12",date:"2026-07-07",time:"03:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r16_7",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-13",awayTeam:"TBD:Gan. R32-14",date:"2026-07-07",time:"18:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"r16_8",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-15",awayTeam:"TBD:Gan. R32-16",date:"2026-07-08",time:"22:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  // CUARTOS DE FINAL
-  {id:"qf1",tId:"t1",group:"QF",homeTeam:"TBD:Gan. Oct-1",awayTeam:"TBD:Gan. Oct-2",date:"2026-07-09",time:"22:00",stage:"Cuartos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"qf2",tId:"t1",group:"QF",homeTeam:"TBD:Gan. Oct-3",awayTeam:"TBD:Gan. Oct-4",date:"2026-07-10",time:"21:00",stage:"Cuartos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"qf3",tId:"t1",group:"QF",homeTeam:"TBD:Gan. Oct-5",awayTeam:"TBD:Gan. Oct-6",date:"2026-07-11",time:"23:00",stage:"Cuartos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"qf4",tId:"t1",group:"QF",homeTeam:"TBD:Gan. Oct-7",awayTeam:"TBD:Gan. Oct-8",date:"2026-07-12",time:"03:00",stage:"Cuartos de final",homeScore:null,awayScore:null,status:"upcoming"},
-  // SEMIFINALES
-  {id:"sf1",tId:"t1",group:"SF",homeTeam:"TBD:Gan. CF-1",awayTeam:"TBD:Gan. CF-2",date:"2026-07-14",time:"21:00",stage:"Semifinal",homeScore:null,awayScore:null,status:"upcoming"},
-  {id:"sf2",tId:"t1",group:"SF",homeTeam:"TBD:Gan. CF-3",awayTeam:"TBD:Gan. CF-4",date:"2026-07-15",time:"23:00",stage:"Semifinal",homeScore:null,awayScore:null,status:"upcoming"},
-  // TERCER PUESTO
-  {id:"tp1",tId:"t1",group:"3P",homeTeam:"TBD:Per. SF-1",awayTeam:"TBD:Per. SF-2",date:"2026-07-18",time:"23:00",stage:"Tercer puesto",homeScore:null,awayScore:null,status:"upcoming"},
-  // FINAL
-  {id:"fin",tId:"t1",group:"FIN",homeTeam:"TBD:Gan. SF-1",awayTeam:"TBD:Gan. SF-2",date:"2026-07-19",time:"21:00",stage:"Final",homeScore:null,awayScore:null,status:"upcoming"},
-];
-
-// ============================================================
-// FIFA API
-// ============================================================
-const FIFA_API = {
-  BASE:"https://givevoicetofootball.fifa.com/api/v1",
-  COMPETITIONS:{"FIFA World Cup":17,"FIFA Women's World Cup":103,"FIFA U-20 World Cup":104,"FIFA U-17 World Cup":107,"FIFA U-20 Women's World Cup":108,"FIFA Club World Cup":292,"FIFA Confederations Cup":102},
-  async searchSeasons(name){
-    try{const r=await fetch(`${FIFA_API.BASE}/seasons/search?name=${encodeURIComponent(name)}&count=10`,{headers:{"Accept":"application/json"}});if(!r.ok)throw new Error(`HTTP ${r.status}`);return await r.json();}
-    catch(e){return{error:e.message};}
+/** Solo gestiona tokens JWT en memoria (A07 OWASP) */
+const TokenService = {
+  generate: (userId) => {
+    const p = { userId, exp: Date.now() + 3600000, iat: Date.now() };
+    return btoa(JSON.stringify(p)) + "." + Math.random().toString(36).slice(2);
   },
-  async getMatches(idC,idS){
-    try{const r=await fetch(`${FIFA_API.BASE}/calendar/matches?idSeason=${idS}&idCompetition=${idC}&count=100`,{headers:{"Accept":"application/json"}});if(!r.ok)throw new Error(`HTTP ${r.status}`);return await r.json();}
-    catch(e){return{error:e.message};}
+  verify: (token) => {
+    try {
+      const p = JSON.parse(atob(token.split(".")[0]));
+      return p.exp > Date.now() ? p : null;
+    } catch { return null; }
   },
-  transformMatch(m,tId){
-    return{id:"fifa_"+m.IdMatch,tId,group:m.GroupName?.[0]?.Description||"?",homeTeam:m.Home?.TeamName?.[0]?.Description||"TBD",awayTeam:m.Away?.TeamName?.[0]?.Description||"TBD",date:m.Date?.split("T")[0]||"",time:m.Date?.split("T")[1]?.slice(0,5)||"00:00",stage:m.StageName?.[0]?.Description||"Fase de grupos",homeScore:m.HomeTeamScore??null,awayScore:m.AwayTeamScore??null,status:m.MatchStatus===3?"finished":m.MatchStatus===1?"active":"upcoming"};
-  }
 };
 
-// ============================================================
-// STORE — universal adapter
-// Uses window.storage (Claude artifact) when available,
-// falls back to localStorage (local dev / Vercel deploy)
-// ============================================================
-const Store = {
-  // Detect which backend to use
-  _useWindowStorage() {
+/** Solo hashea contraseñas (A02 OWASP) */
+const PasswordService = {
+  hash: async (pwd) => {
+    const data = new TextEncoder().encode(pwd + "sc_salt_2024");
+    const buf  = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+  },
+  /** Contraseña demo: acepta cualquier texto */
+  isDemoHash: (hash) => hash === "demo_hash",
+};
+
+/** Solo controla la tasa de intentos (A07 OWASP) */
+const RateLimiter = {
+  _store: {},
+  check: (key, max = 5, windowMs = 60000) => {
+    const now = Date.now();
+    RateLimiter._store[key] = (RateLimiter._store[key] || []).filter(t => now - t < windowMs);
+    if (RateLimiter._store[key].length >= max) return false;
+    RateLimiter._store[key].push(now);
+    return true;
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// O — OPEN/CLOSED  +  D — DEPENDENCY INVERSION
+// StorageAdapter es la abstracción (interfaz).
+// WindowStorageAdapter y LocalStorageAdapter son implementaciones
+// intercambiables sin modificar el código que las usa.
+// Agregar un nuevo backend (IndexedDB, Redis, etc.) = nueva clase,
+// sin tocar nada más.
+// ─────────────────────────────────────────────────────────────
+
+/** Contrato: cualquier implementación debe cumplir get/set con T|null */
+const StorageAdapterContract = {
+  get: async (key) => { throw new Error("Not implemented"); },   // → T | null
+  set: async (key, value) => { throw new Error("Not implemented"); }, // → boolean
+};
+
+/** Implementación para el artifact de Claude (window.storage) */
+const WindowStorageAdapter = {
+  isAvailable: () => {
     try { return typeof window.storage !== "undefined" && typeof window.storage.get === "function"; }
     catch { return false; }
   },
-
-  async get(key) {
-    try {
-      if (Store._useWindowStorage()) {
-        const r = await window.storage.get(key);
-        return r ? JSON.parse(r.value) : null;
-      } else {
-        const raw = localStorage.getItem("sc:" + key);
-        return raw ? JSON.parse(raw) : null;
-      }
-    } catch { return null; }
+  get: async (key) => {
+    try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; }
+    catch { return null; }
   },
-
-  async set(key, val) {
-    try {
-      if (Store._useWindowStorage()) {
-        await window.storage.set(key, JSON.stringify(val));
-      } else {
-        localStorage.setItem("sc:" + key, JSON.stringify(val));
-      }
-      return true;
-    } catch { return false; }
+  set: async (key, value) => {
+    try { await window.storage.set(key, JSON.stringify(value)); return true; }
+    catch { return false; }
   },
+};
 
-  async init() {
-    if(!(await Store.get("db:users")))           await Store.set("db:users", SEED_USERS);
-    if(!(await Store.get("db:tournaments")))      await Store.set("db:tournaments", SEED_TOURNAMENTS);
-    if(!(await Store.get("db:invitations")))      await Store.set("db:invitations", []);
-    if(!(await Store.get("db:audit")))            await Store.set("db:audit", []);
+/** Implementación para entorno web estándar (localStorage) */
+const LocalStorageAdapter = {
+  isAvailable: () => {
+    try { return typeof localStorage !== "undefined"; }
+    catch { return false; }
+  },
+  get: async (key) => {
+    try { const raw = localStorage.getItem("sc:" + key); return raw ? JSON.parse(raw) : null; }
+    catch { return null; }
+  },
+  set: async (key, value) => {
+    try { localStorage.setItem("sc:" + key, JSON.stringify(value)); return true; }
+    catch { return false; }
+  },
+};
 
-    // ── DATA MIGRATION v2 ───────────────────────────────────────
-    // If matches for t1 exist but are the old 16-match version,
-    // replace them with the complete 104-match 2026 World Cup fixture.
-    const existingMatches = await Store.get("db:matches:t1");
-    const needsMigration  = !existingMatches || existingMatches.length < 72;
-    if (needsMigration) {
-      await Store.set("db:matches:t1", SEED_MATCHES_T1);
+/**
+ * StorageAdapterFactory — O/C: para agregar un nuevo backend
+ * solo se registra aquí, sin modificar ningún consumer.
+ */
+const StorageAdapterFactory = {
+  _adapters: [WindowStorageAdapter, LocalStorageAdapter],
+  resolve: () => StorageAdapterFactory._adapters.find(a => a.isAvailable()) || LocalStorageAdapter,
+};
+
+// La instancia resuelta una sola vez al arrancar
+const storage = StorageAdapterFactory.resolve();
+
+// ─────────────────────────────────────────────────────────────
+// S — SINGLE RESPONSIBILITY (continuación)
+// Un Repository por entidad. Cada uno sabe leer/escribir solo
+// su propia colección — no sabe nada de lógica de negocio.
+// ─────────────────────────────────────────────────────────────
+
+const UserRepository = {
+  getAll:     async ()     => (await storage.get("db:users"))       || [],
+  save:       async (list) => storage.set("db:users", list),
+  findById:   async (id)   => { const l = await UserRepository.getAll(); return l.find(u => u.id === id) || null; },
+  findByName: async (name) => { const l = await UserRepository.getAll(); return l.find(u => u.username === name) || null; },
+};
+
+const TournamentRepository = {
+  getAll:   async ()     => (await storage.get("db:tournaments")) || [],
+  save:     async (list) => storage.set("db:tournaments", list),
+  findById: async (id)   => { const l = await TournamentRepository.getAll(); return l.find(t => t.id === id) || null; },
+};
+
+const MatchRepository = {
+  getAll:   async (tId)  => (await storage.get("db:matches:" + tId))     || [],
+  save:     async (tId, list) => storage.set("db:matches:" + tId, list),
+  findById: async (tId, id)   => { const l = await MatchRepository.getAll(tId); return l.find(m => m.id === id) || null; },
+};
+
+const PredictionRepository = {
+  getAll:    async (tId)             => (await storage.get("db:predictions:" + tId)) || [],
+  save:      async (tId, list)       => storage.set("db:predictions:" + tId, list),
+  findByUser: async (tId, userId)    => { const l = await PredictionRepository.getAll(tId); return l.filter(p => p.userId === userId); },
+  findByMatch: async (tId, matchId)  => { const l = await PredictionRepository.getAll(tId); return l.filter(p => p.matchId === matchId); },
+};
+
+const LeaderboardRepository = {
+  get:    async (tId)       => (await storage.get("db:leaderboard:" + tId)) || {},
+  save:   async (tId, map)  => storage.set("db:leaderboard:" + tId, map),
+  addPoints: async (tId, userId, pts) => {
+    const map = await LeaderboardRepository.get(tId);
+    map[userId] = (map[userId] || 0) + pts;
+    return LeaderboardRepository.save(tId, map);
+  },
+};
+
+const InvitationRepository = {
+  getAll:    async ()     => (await storage.get("db:invitations")) || [],
+  save:      async (list) => storage.set("db:invitations", list),
+  findByCode: async (code) => { const l = await InvitationRepository.getAll(); return l.find(i => i.code === code && i.status === "pending") || null; },
+  findById:  async (id)   => { const l = await InvitationRepository.getAll(); return l.find(i => i.id === id) || null; },
+};
+
+const AuditRepository = {
+  MAX_ENTRIES: 300,
+  log: async (userId, action, details) => {
+    const entries = (await storage.get("db:audit")) || [];
+    entries.push({ ts: new Date().toISOString(), userId, action, details });
+    if (entries.length > AuditRepository.MAX_ENTRIES)
+      entries.splice(0, entries.length - AuditRepository.MAX_ENTRIES);
+    await storage.set("db:audit", entries);
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// O — OPEN/CLOSED
+// PropagationStrategy: agregar nueva estrategia = nueva entrada
+// en el array, sin modificar el dispatcher.
+// ─────────────────────────────────────────────────────────────
+
+/** Estrategia dinámica: el partido tiene nextMatchWinnerId explícito */
+const DynamicPropagationStrategy = {
+  canHandle: (match) => !!match.nextMatchWinnerId,
+  propagate: async (tId, match, winner, loser) => {
+    const matches = await MatchRepository.getAll(tId);
+    let changed = false;
+    const apply = (targetId, slot, team) => {
+      const idx = matches.findIndex(m => m.id === targetId);
+      if (idx < 0) return;
+      matches[idx][slot === "away" ? "awayTeam" : "homeTeam"] = team;
+      changed = true;
+    };
+    if (match.nextMatchWinnerId)
+      apply(match.nextMatchWinnerId, match.nextMatchWinnerSlot || "home", winner);
+    if (match.nextMatchLoserId)
+      apply(match.nextMatchLoserId,  match.nextMatchLoserSlot  || "home", loser);
+    if (changed) await MatchRepository.save(tId, matches);
+  },
+};
+
+/** Estrategia legado: mapa estático para el Mundial 2026 */
+const LegacyFifaPropagationStrategy = {
+  KNOCKOUT_STAGES: ["Ronda de 32","Octavos de final","Cuartos de final","Semifinal"],
+  WINNER_SLOTS: {
+    "r32_1":"TBD:Gan. R32-1","r32_2":"TBD:Gan. R32-2","r32_3":"TBD:Gan. R32-3","r32_4":"TBD:Gan. R32-4",
+    "r32_5":"TBD:Gan. R32-5","r32_6":"TBD:Gan. R32-6","r32_7":"TBD:Gan. R32-7","r32_8":"TBD:Gan. R32-8",
+    "r32_9":"TBD:Gan. R32-9","r32_10":"TBD:Gan. R32-10","r32_11":"TBD:Gan. R32-11","r32_12":"TBD:Gan. R32-12",
+    "r32_13":"TBD:Gan. R32-13","r32_14":"TBD:Gan. R32-14","r32_15":"TBD:Gan. R32-15","r32_16":"TBD:Gan. R32-16",
+    "r16_1":"TBD:Gan. Oct-1","r16_2":"TBD:Gan. Oct-2","r16_3":"TBD:Gan. Oct-3","r16_4":"TBD:Gan. Oct-4",
+    "r16_5":"TBD:Gan. Oct-5","r16_6":"TBD:Gan. Oct-6","r16_7":"TBD:Gan. Oct-7","r16_8":"TBD:Gan. Oct-8",
+    "qf1":"TBD:Gan. CF-1","qf2":"TBD:Gan. CF-2","qf3":"TBD:Gan. CF-3","qf4":"TBD:Gan. CF-4",
+    "sf1":"TBD:Gan. SF-1","sf2":"TBD:Gan. SF-2",
+  },
+  LOSER_SLOTS: { "sf1":"TBD:Per. SF-1","sf2":"TBD:Per. SF-2" },
+  canHandle: (match) => LegacyFifaPropagationStrategy.KNOCKOUT_STAGES.includes(match.stage),
+  propagate: async (tId, match, winner, loser) => {
+    const matches  = await MatchRepository.getAll(tId);
+    const winSlot  = LegacyFifaPropagationStrategy.WINNER_SLOTS[match.id];
+    const loseSlot = LegacyFifaPropagationStrategy.LOSER_SLOTS[match.id];
+    let changed = false;
+    for (const m of matches) {
+      if (winSlot  && m.homeTeam === winSlot)  { m.homeTeam = winner; changed = true; }
+      if (winSlot  && m.awayTeam === winSlot)  { m.awayTeam = winner; changed = true; }
+      if (loseSlot && m.homeTeam === loseSlot) { m.homeTeam = loser;  changed = true; }
+      if (loseSlot && m.awayTeam === loseSlot) { m.awayTeam = loser;  changed = true; }
     }
+    if (changed) await MatchRepository.save(tId, matches);
+  },
+};
 
-    // Also update tournament record with new group list if outdated
-    const tournaments = await Store.get("db:tournaments") || [];
+/** Dispatcher: prueba estrategias en orden, usa la primera que aplique */
+const PropagationDispatcher = {
+  _strategies: [DynamicPropagationStrategy, LegacyFifaPropagationStrategy],
+  dispatch: async (tId, match, homeScore, awayScore) => {
+    const winner = homeScore > awayScore ? match.homeTeam : match.awayTeam;
+    const loser  = homeScore > awayScore ? match.awayTeam : match.homeTeam;
+    const strategy = PropagationDispatcher._strategies.find(s => s.canHandle(match));
+    if (strategy) await strategy.propagate(tId, match, winner, loser);
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// S — SINGLE RESPONSIBILITY (servicios de dominio)
+// I — INTERFACE SEGREGATION
+// Cada servicio expone solo los métodos relevantes a su dominio.
+// Los componentes importan solo el servicio que necesitan.
+// D — DEPENDENCY INVERSION
+// Los servicios reciben sus dependencias (repos, validators)
+// como parámetros — no las instancian ellos mismos.
+// ─────────────────────────────────────────────────────────────
+
+/** Solo autentica usuarios */
+const AuthService = {
+  login: async (username, password) => {
+    if (!RateLimiter.check("login:" + username, 5, 60000))
+      return { error: "Demasiados intentos. Esperá 60s." };
+    const user = await UserRepository.findByName(Sanitizer.clean(username));
+    if (!user)          return { error: "Credenciales inválidas" };
+    if (!user.active)   return { error: "Tu cuenta está desactivada." };
+    if (!PasswordService.isDemoHash(user.passwordHash)) {
+      const hash = await PasswordService.hash(password || "");
+      if (hash !== user.passwordHash) return { error: "Credenciales inválidas" };
+    }
+    const token = TokenService.generate(user.id);
+    await AuditRepository.log(user.id, "LOGIN", { username });
+    return { token, user: { id: user.id, username: user.username, role: user.role, avatar: user.avatar } };
+  },
+  /** Verifica que el token pertenece a un admin activo */
+  requireAdmin: async (token) => {
+    const payload = TokenService.verify(token);
+    if (!payload) return null;
+    const user = await UserRepository.findById(payload.userId);
+    return user?.role === "admin" && user.active ? user : null;
+  },
+};
+
+/** Solo gestiona usuarios */
+const UserService = {
+  getAll: async (token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    const users = await UserRepository.getAll();
+    // L — Liskov: siempre retorna la misma forma, nunca undefined
+    return { success: true, users: users.map(u => ({
+      id: u.id, username: u.username, role: u.role,
+      avatar: u.avatar, active: u.active, createdAt: u.createdAt,
+      invitedByName: u.invitedByName,
+    }))};
+  },
+  create: async (data, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    if (!Validator.username(data.username)) return { error: "Usuario inválido (3-20 chars, letras/números/_)" };
+    if (!Validator.password(data.password || "")) return { error: "Contraseña mínimo 4 caracteres" };
+    const users = await UserRepository.getAll();
+    if (users.find(u => u.username.toLowerCase() === data.username.toLowerCase()))
+      return { error: "Ese nombre de usuario ya existe" };
+    const newUser = {
+      id: "u_" + Date.now(),
+      username: Sanitizer.clean(data.username),
+      passwordHash: await PasswordService.hash(data.password),
+      role: Validator.role(data.role) ? data.role : "user",
+      avatar: AVATARS.includes(data.avatar) ? data.avatar : "⚽",
+      active: true,
+      createdAt: new Date().toISOString().split("T")[0],
+    };
+    await UserRepository.save([...users, newUser]);
+    await AuditRepository.log("admin", "CREATE_USER", { username: newUser.username });
+    return { success: true, user: { id: newUser.id, username: newUser.username, role: newUser.role, avatar: newUser.avatar, active: newUser.active, createdAt: newUser.createdAt } };
+  },
+  update: async (userId, fields, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    const users = await UserRepository.getAll();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx < 0) return { error: "Usuario no encontrado" };
+    if (users[idx].id === "u1" && fields.role && fields.role !== "admin")
+      return { error: "No se puede cambiar el rol del admin principal" };
+    if (Validator.role(fields.role))             users[idx].role   = fields.role;
+    if (fields.active !== undefined)             users[idx].active = Boolean(fields.active);
+    if (AVATARS.includes(fields.avatar))         users[idx].avatar = fields.avatar;
+    if (fields.password && Validator.password(fields.password))
+      users[idx].passwordHash = await PasswordService.hash(fields.password);
+    await UserRepository.save(users);
+    await AuditRepository.log("admin", "UPDATE_USER", { userId, fields: Object.keys(fields) });
+    return { success: true, user: { id: users[idx].id, username: users[idx].username, role: users[idx].role, avatar: users[idx].avatar, active: users[idx].active } };
+  },
+  remove: async (userId, requesterId, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    if (userId === "u1")       return { error: "No se puede eliminar el admin principal" };
+    if (userId === requesterId) return { error: "No podés eliminarte a vos mismo" };
+    const users = await UserRepository.getAll();
+    const filtered = users.filter(u => u.id !== userId);
+    if (filtered.length === users.length) return { error: "Usuario no encontrado" };
+    await UserRepository.save(filtered);
+    await AuditRepository.log(requesterId, "DELETE_USER", { userId });
+    return { success: true };
+  },
+};
+
+/** Solo gestiona torneos */
+const TournamentService = {
+  getAll:   async ()       => TournamentRepository.getAll(),
+  findById: async (tId)    => TournamentRepository.findById(tId),
+  create: async (data, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    if (!data.name || !data.startDate || !data.endDate) return { error: "Nombre y fechas requeridos" };
+    const tId = "t_" + Date.now();
+    const groups = (data.groups || "").split(",").map(g => g.trim().toUpperCase()).filter(Boolean);
+    const tournament = {
+      id: tId,
+      name:      Sanitizer.clean(data.name),
+      shortName: Sanitizer.clean(data.shortName || data.name.split(" ").slice(-2).join(" ")),
+      region:    Sanitizer.clean(data.region || "Global"),
+      status:    ["upcoming","active","finished"].includes(data.status) ? data.status : "upcoming",
+      logo:      ["🌍","🌎","🌏","⚽","🏆","⭐","🥇","🎯"].includes(data.logo) ? data.logo : "🏆",
+      startDate: Sanitizer.clean(data.startDate),
+      endDate:   Sanitizer.clean(data.endDate),
+      groups:    groups.length ? groups : ["A","B","C","D"],
+      source:    data.source || "manual",
+      fifaCompId:    data.fifaCompId   || null,
+      fifaSeasonId:  data.fifaSeasonId || null,
+    };
+    const list = await TournamentRepository.getAll();
+    await TournamentRepository.save([...list, tournament]);
+    // Inicializar colecciones relacionadas
+    await MatchRepository.save(tId, []);
+    await storage.set("db:predictions:" + tId, []);
+    await LeaderboardRepository.save(tId, {});
+    await AuditRepository.log("admin", "CREATE_TOURNAMENT", { tId, name: tournament.name });
+    return { success: true, tournament };
+  },
+  update: async (tId, fields, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    const list = await TournamentRepository.getAll();
+    const idx  = list.findIndex(t => t.id === tId);
+    if (idx < 0) return { error: "Torneo no encontrado" };
+    const allowed = ["status","name","startDate","endDate","region"];
+    for (const k of allowed)
+      if (fields[k] !== undefined) list[idx][k] = Sanitizer.clean(String(fields[k]));
+    await TournamentRepository.save(list);
+    await AuditRepository.log("admin", "UPDATE_TOURNAMENT", { tId, ...fields });
+    return { success: true, tournament: list[idx] };
+  },
+  remove: async (tId, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    if (tId === "t1") return { error: "No se puede eliminar el torneo base" };
+    const list     = await TournamentRepository.getAll();
+    const filtered = list.filter(t => t.id !== tId);
+    if (filtered.length === list.length) return { error: "Torneo no encontrado" };
+    await TournamentRepository.save(filtered);
+    await AuditRepository.log("admin", "DELETE_TOURNAMENT", { tId });
+    return { success: true };
+  },
+};
+
+/** Solo gestiona partidos */
+const MatchService = {
+  getForUser: async (tId, userId) => {
+    const matches = await MatchRepository.getAll(tId);
+    const preds   = await PredictionRepository.getAll(tId);
+    return matches.map(m => ({
+      ...m,
+      myPrediction: preds.find(p => p.matchId === m.id && p.userId === userId) || null,
+    }));
+  },
+  add: async (tId, data, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    if (!data.homeTeam || !data.awayTeam) return { error: "Equipos requeridos" };
+    const match = {
+      id: "m_" + Date.now(), tId,
+      group:    Sanitizer.clean(data.group || "A"),
+      stage:    Sanitizer.clean(data.stage || "Grupo " + data.group),
+      homeTeam: Sanitizer.clean(data.homeTeam),
+      awayTeam: Sanitizer.clean(data.awayTeam),
+      date:     Sanitizer.clean(data.date || ""),
+      time:     Sanitizer.clean(data.time || "18:00"),
+      homeScore: null, awayScore: null, status: "upcoming",
+      ...(data.nextMatchWinnerId   && { nextMatchWinnerId:   Sanitizer.clean(data.nextMatchWinnerId) }),
+      ...(data.nextMatchWinnerSlot && { nextMatchWinnerSlot: Validator.slot(data.nextMatchWinnerSlot) }),
+      ...(data.nextMatchLoserId    && { nextMatchLoserId:    Sanitizer.clean(data.nextMatchLoserId) }),
+      ...(data.nextMatchLoserSlot  && { nextMatchLoserSlot:  Validator.slot(data.nextMatchLoserSlot) }),
+    };
+    const matches = await MatchRepository.getAll(tId);
+    await MatchRepository.save(tId, [...matches, match]);
+    await AuditRepository.log("admin", "ADD_MATCH", { tId, matchId: match.id });
+    return { success: true, match };
+  },
+  setResult: async (tId, matchId, homeScore, awayScore, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    if (!Validator.score(homeScore) || !Validator.score(awayScore)) return { error: "Marcador inválido" };
+    const matches = await MatchRepository.getAll(tId);
+    const idx     = matches.findIndex(m => m.id === matchId);
+    if (idx < 0) return { error: "Partido no encontrado" };
+    matches[idx] = { ...matches[idx], homeScore: parseInt(homeScore), awayScore: parseInt(awayScore), status: "finished" };
+    await MatchRepository.save(tId, matches);
+    await PointsCalculator.recalculate(tId, matchId, parseInt(homeScore), parseInt(awayScore));
+    await PropagationDispatcher.dispatch(tId, matches[idx], parseInt(homeScore), parseInt(awayScore));
+    await AuditRepository.log("admin", "SET_RESULT", { tId, matchId, homeScore, awayScore });
+    return { success: true };
+  },
+  importFromFIFA: async (tId, idCompetition, idSeason, token, fifaClient) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    // D — Dependency Inversion: fifaClient es inyectado, no hardcodeado
+    const result = await fifaClient.getMatches(idCompetition, idSeason);
+    if (result.error) return { error: "FIFA API: " + result.error, corsBlocked: true };
+    const matches = (result.Results || []).map(m => fifaClient.transformMatch(m, tId));
+    if (!matches.length) return { error: "Sin partidos" };
+    await MatchRepository.save(tId, matches);
+    await AuditRepository.log("admin", "IMPORT_FIFA", { tId, count: matches.length });
+    return { success: true, count: matches.length };
+  },
+};
+
+/** Solo calcula puntos — responsabilidad única de scoring */
+const PointsCalculator = {
+  calcPts: (pred, realHome, realAway) => {
+    if (pred.homeScore === realHome && pred.awayScore === realAway) return 3;
+    const pW = pred.homeScore > pred.awayScore, rW = realHome > realAway;
+    const pD = pred.homeScore === pred.awayScore, rD = realHome === realAway;
+    const pA = pred.homeScore < pred.awayScore, rA = realHome < realAway;
+    return (pW&&rW)||(pD&&rD)||(pA&&rA) ? 1 : 0;
+  },
+  recalculate: async (tId, matchId, realHome, realAway) => {
+    const preds = await PredictionRepository.getAll(tId);
+    const lb    = await LeaderboardRepository.get(tId);
+    for (const p of preds) {
+      if (p.matchId !== matchId) continue;
+      p.points = PointsCalculator.calcPts(p, realHome, realAway);
+      lb[p.userId] = (lb[p.userId] || 0) + p.points;
+    }
+    await PredictionRepository.save(tId, preds);
+    await LeaderboardRepository.save(tId, lb);
+  },
+};
+
+/** Solo gestiona predicciones de usuarios */
+const PredictionService = {
+  save: async (userId, tId, matchId, homeScore, awayScore) => {
+    if (!Validator.score(homeScore) || !Validator.score(awayScore)) return { error: "Marcador inválido" };
+    const match = await MatchRepository.findById(tId, matchId);
+    if (!match || match.status === "finished") return { error: "No se puede pronosticar" };
+    const preds = await PredictionRepository.getAll(tId);
+    const idx   = preds.findIndex(p => p.matchId === matchId && p.userId === userId);
+    const pred  = { id: "p_" + Date.now(), userId, matchId, tId,
+                    homeScore: parseInt(homeScore), awayScore: parseInt(awayScore),
+                    createdAt: new Date().toISOString(), points: 0 };
+    if (idx >= 0) preds[idx] = pred; else preds.push(pred);
+    await PredictionRepository.save(tId, preds);
+    await AuditRepository.log(userId, "PREDICT", { tId, matchId, homeScore, awayScore });
+    return { success: true, prediction: pred };
+  },
+};
+
+/** Solo gestiona el ranking */
+const LeaderboardService = {
+  get: async (tId) => {
+    const users = await UserRepository.getAll();
+    const preds = await PredictionRepository.getAll(tId);
+    const lb    = await LeaderboardRepository.get(tId);
+    return users
+      .filter(u => u.role === "user" && u.active)
+      .map(u => ({
+        ...u,
+        points:      lb[u.id] || 0,
+        predictions: preds.filter(p => p.userId === u.id).length,
+        exact:       preds.filter(p => p.userId === u.id && p.points === 3).length,
+      }))
+      .sort((a, b) => b.points - a.points || b.predictions - a.predictions);
+  },
+  getForUser: async (userId, tId) => {
+    const lb = await LeaderboardRepository.get(tId);
+    return lb[userId] || 0;
+  },
+};
+
+/** Solo gestiona el flujo de invitaciones */
+const InvitationService = {
+  create: async (userId, tId) => {
+    const inviter = await UserRepository.findById(userId);
+    if (!inviter?.active) return { error: "Usuario no encontrado" };
+    const tournament = await TournamentRepository.findById(tId);
+    if (!tournament) return { error: "Torneo no encontrado" };
+    const all = await InvitationRepository.getAll();
+    if (all.filter(i => i.invitedBy === userId && i.status === "pending").length >= 5)
+      return { error: "Límite de 5 invitaciones activas por usuario" };
+    const code = (Math.random().toString(36).slice(2,6) + Math.random().toString(36).slice(2,6)).toUpperCase();
+    const inv  = { id: "inv_" + Date.now(), code, tId, tName: tournament.name,
+                   invitedBy: userId, invitedByName: inviter.username,
+                   status: "pending", newUsername: null, newPasswordHash: null, newAvatar: null,
+                   createdAt: new Date().toISOString(), resolvedAt: null };
+    await InvitationRepository.save([...all, inv]);
+    await AuditRepository.log(userId, "CREATE_INVITATION", { code, tId });
+    return { success: true, invitation: inv };
+  },
+  registerWithCode: async (code, username, password, avatar) => {
+    if (!RateLimiter.check("reg:" + code, 5, 300000))
+      return { error: "Demasiados intentos. Esperá 5 minutos." };
+    const inv = await InvitationRepository.findByCode(code.toUpperCase().trim());
+    if (!inv) return { error: "Código inválido o ya utilizado" };
+    if (!Validator.username(username)) return { error: "Usuario inválido (3-20 chars)" };
+    if (!Validator.password(password)) return { error: "Contraseña mínimo 4 caracteres" };
+    const users = await UserRepository.getAll();
+    if (users.find(u => u.username.toLowerCase() === username.toLowerCase()))
+      return { error: "Ese nombre de usuario ya existe" };
+    const all = await InvitationRepository.getAll();
+    const idx = all.findIndex(i => i.id === inv.id);
+    all[idx] = { ...inv, status: "registered",
+                 newUsername: Sanitizer.clean(username),
+                 newPasswordHash: await PasswordService.hash(password),
+                 newAvatar: AVATARS.includes(avatar) ? avatar : "⚽" };
+    await InvitationRepository.save(all);
+    await AuditRepository.log("anon", "REGISTER_WITH_CODE", { code, username });
+    return { success: true, invitation: all[idx] };
+  },
+  getAll: async (token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    return { success: true, invitations: await InvitationRepository.getAll() };
+  },
+  getForUser: async (userId) => {
+    const all = await InvitationRepository.getAll();
+    return all.filter(i => i.invitedBy === userId);
+  },
+  approve: async (invId, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    const all = await InvitationRepository.getAll();
+    const idx = all.findIndex(i => i.id === invId && i.status === "registered");
+    if (idx < 0) return { error: "Invitación no encontrada o en estado incorrecto" };
+    const inv   = all[idx];
+    const users = await UserRepository.getAll();
+    if (users.find(u => u.username.toLowerCase() === inv.newUsername.toLowerCase()))
+      return { error: "El nombre de usuario ya fue tomado" };
+    const newUser = { id: "u_" + Date.now(), username: inv.newUsername,
+                      passwordHash: inv.newPasswordHash, role: "user",
+                      avatar: inv.newAvatar, active: true,
+                      createdAt: new Date().toISOString().split("T")[0],
+                      invitedBy: inv.invitedBy, invitedByName: inv.invitedByName };
+    await UserRepository.save([...users, newUser]);
+    all[idx] = { ...inv, status: "approved", resolvedAt: new Date().toISOString() };
+    await InvitationRepository.save(all);
+    await AuditRepository.log("admin", "APPROVE_INVITATION", { invId, username: inv.newUsername });
+    return { success: true, user: newUser };
+  },
+  reject: async (invId, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    const all = await InvitationRepository.getAll();
+    const idx = all.findIndex(i => i.id === invId && ["pending","registered"].includes(i.status));
+    if (idx < 0) return { error: "Invitación no encontrada" };
+    all[idx] = { ...all[idx], status: "rejected", resolvedAt: new Date().toISOString() };
+    await InvitationRepository.save(all);
+    await AuditRepository.log("admin", "REJECT_INVITATION", { invId });
+    return { success: true };
+  },
+  cancel: async (invId, userId) => {
+    const all = await InvitationRepository.getAll();
+    const idx = all.findIndex(i => i.id === invId && i.invitedBy === userId && i.status === "pending");
+    if (idx < 0) return { error: "Invitación no encontrada" };
+    all[idx] = { ...all[idx], status: "rejected", resolvedAt: new Date().toISOString() };
+    await InvitationRepository.save(all);
+    await AuditRepository.log(userId, "CANCEL_INVITATION", { invId });
+    return { success: true };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// D — DEPENDENCY INVERSION
+// ServiceContext inyecta los servicios vía React Context.
+// Los componentes consumen el contexto — no dependen de globals.
+// Para tests: proveer mocks en el Provider.
+// ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+// D — DEPENDENCY INVERSION (continuación)
+// ServiceContext — los componentes reciben servicios via contexto
+// en lugar de importarlos directamente (no dependen de globals).
+// ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+// S — GRUPOS PRIVADOS
+// Schema:
+//   db:groups       → Group[]       { id, name, tournamentId, ownerId, ownerName, code, createdAt }
+//   db:memberships  → Membership[]  { id, groupId, userId, role:"owner"|"member", joinedAt }
+// El ranking de cada grupo filtra los miembros sobre las
+// predicciones globales del torneo — sin duplicar datos.
+// ─────────────────────────────────────────────────────────────
+
+const GroupRepository = {
+  getAll:     async ()      => (await storage.get("db:groups")) || [],
+  save:       async (list)  => storage.set("db:groups", list),
+  findById:   async (id)    => { const l = await GroupRepository.getAll(); return l.find(g => g.id === id) || null; },
+  findByCode: async (code)  => { const l = await GroupRepository.getAll(); return l.find(g => g.code === code) || null; },
+};
+
+const MembershipRepository = {
+  getAll:      async ()         => (await storage.get("db:memberships")) || [],
+  save:        async (list)     => storage.set("db:memberships", list),
+  findByGroup: async (groupId)  => { const l = await MembershipRepository.getAll(); return l.filter(m => m.groupId === groupId); },
+  findByUser:  async (userId)   => { const l = await MembershipRepository.getAll(); return l.filter(m => m.userId === userId); },
+  isMember:    async (groupId, userId) => { const l = await MembershipRepository.getAll(); return !!l.find(m => m.groupId === groupId && m.userId === userId); },
+};
+
+const GroupService = {
+  getForUser: async (userId) => {
+    const memberships = await MembershipRepository.findByUser(userId);
+    const groups      = await GroupRepository.getAll();
+    const tournaments = await TournamentRepository.getAll();
+    return memberships.map(mb => {
+      const g = groups.find(gr => gr.id === mb.groupId);
+      if (!g) return null;
+      const t = tournaments.find(t => t.id === g.tournamentId);
+      return { ...g, tournamentName: t?.name||"—", tournamentLogo: t?.logo||"🏆", myRole: mb.role };
+    }).filter(Boolean);
+  },
+  create: async (userId, data) => {
+    if (!data.name?.trim()) return { error: "El nombre del grupo es requerido" };
+    if (!data.tournamentId) return { error: "Seleccioná un torneo base" };
+    const tournament = await TournamentRepository.findById(data.tournamentId);
+    if (!tournament) return { error: "Torneo no encontrado" };
+    const user = await UserRepository.findById(userId);
+    if (!user) return { error: "Usuario no encontrado" };
+    const myMemberships = await MembershipRepository.findByUser(userId);
+    if (myMemberships.filter(m => m.role === "owner").length >= 10)
+      return { error: "Límite de 10 grupos propios por usuario" };
+    const code    = (Math.random().toString(36).slice(2,5)+Math.random().toString(36).slice(2,5)).toUpperCase();
+    const groupId = "grp_" + Date.now();
+    const group   = { id: groupId, name: Sanitizer.clean(data.name, 60),
+                      tournamentId: data.tournamentId, ownerId: userId,
+                      ownerName: user.username, code,
+                      createdAt: new Date().toISOString().split("T")[0] };
+    await GroupRepository.save([...(await GroupRepository.getAll()), group]);
+    await MembershipRepository.save([...(await MembershipRepository.getAll()),
+      { id: "mb_"+Date.now(), groupId, userId, role: "owner", joinedAt: new Date().toISOString() }]);
+    await AuditRepository.log(userId, "CREATE_GROUP", { groupId, name: group.name });
+    return { success: true, group };
+  },
+  joinByCode: async (userId, code) => {
+    const group = await GroupRepository.findByCode(code.toUpperCase().trim());
+    if (!group) return { error: "Código de grupo inválido" };
+    if (await MembershipRepository.isMember(group.id, userId)) return { error: "Ya sos miembro de este grupo" };
+    const members = await MembershipRepository.findByGroup(group.id);
+    if (members.length >= 50) return { error: "El grupo ya alcanzó el máximo de 50 miembros" };
+    await MembershipRepository.save([...(await MembershipRepository.getAll()),
+      { id: "mb_"+Date.now(), groupId: group.id, userId, role: "member", joinedAt: new Date().toISOString() }]);
+    await AuditRepository.log(userId, "JOIN_GROUP", { groupId: group.id });
+    const tournament = await TournamentRepository.findById(group.tournamentId);
+    return { success: true, group: { ...group, tournamentName: tournament?.name } };
+  },
+  leave: async (userId, groupId) => {
+    const group = await GroupRepository.findById(groupId);
+    if (!group) return { error: "Grupo no encontrado" };
+    if (group.ownerId === userId) return { error: "El dueño no puede abandonar el grupo. Eliminalo." };
+    const all      = await MembershipRepository.getAll();
+    const filtered = all.filter(m => !(m.groupId === groupId && m.userId === userId));
+    if (filtered.length === all.length) return { error: "No sos miembro de este grupo" };
+    await MembershipRepository.save(filtered);
+    await AuditRepository.log(userId, "LEAVE_GROUP", { groupId });
+    return { success: true };
+  },
+  remove: async (userId, groupId) => {
+    const group = await GroupRepository.findById(groupId);
+    if (!group) return { error: "Grupo no encontrado" };
+    if (group.ownerId !== userId) return { error: "Solo el dueño puede eliminar el grupo" };
+    await GroupRepository.save((await GroupRepository.getAll()).filter(g => g.id !== groupId));
+    await MembershipRepository.save((await MembershipRepository.getAll()).filter(m => m.groupId !== groupId));
+    await AuditRepository.log(userId, "DELETE_GROUP", { groupId });
+    return { success: true };
+  },
+  getMembers: async (groupId, userId) => {
+    if (!await MembershipRepository.isMember(groupId, userId)) return { error: "No sos miembro de este grupo" };
+    const memberships = await MembershipRepository.findByGroup(groupId);
+    const users       = await UserRepository.getAll();
+    return { success: true, members: memberships.map(mb => {
+      const u = users.find(u => u.id === mb.userId);
+      return u ? { id:u.id, username:u.username, avatar:u.avatar, role:mb.role, joinedAt:mb.joinedAt } : null;
+    }).filter(Boolean)};
+  },
+};
+
+const GroupLeaderboardService = {
+  get: async (groupId, userId) => {
+    const group = await GroupRepository.findById(groupId);
+    if (!group) return { error: "Grupo no encontrado" };
+    if (!await MembershipRepository.isMember(groupId, userId)) return { error: "No sos miembro" };
+    const memberships = await MembershipRepository.findByGroup(groupId);
+    const memberIds   = memberships.map(m => m.userId);
+    const users       = await UserRepository.getAll();
+    const preds       = await PredictionRepository.getAll(group.tournamentId);
+    const lb          = await LeaderboardRepository.get(group.tournamentId);
+    return { success: true, leaderboard: users
+      .filter(u => memberIds.includes(u.id) && u.active)
+      .map(u => ({ id:u.id, username:u.username, avatar:u.avatar,
+        role: memberships.find(m=>m.userId===u.id)?.role||"member",
+        points: lb[u.id]||0,
+        predictions: preds.filter(p=>p.userId===u.id).length,
+        exact: preds.filter(p=>p.userId===u.id&&p.points===3).length }))
+      .sort((a,b)=>b.points-a.points||b.predictions-a.predictions) };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────
+// D — DEPENDENCY INVERSION — ServiceContext
+// ─────────────────────────────────────────────────────────────
+
+const ServiceContext = createContext(null);
+
+const defaultServices = {
+  auth:             AuthService,
+  users:            UserService,
+  tournaments:      TournamentService,
+  matches:          MatchService,
+  predictions:      PredictionService,
+  leaderboard:      LeaderboardService,
+  invitations:      InvitationService,
+  groups:           GroupService,
+  groupLeaderboard: GroupLeaderboardService,
+  fifaClient:       FIFA_API,
+};
+
+const useServices = () => useContext(ServiceContext);
+
+const DatabaseInitializer = {
+  init: async () => {
+    if (!(await storage.get("db:users")))          await storage.set("db:users", SEED_USERS);
+    if (!(await storage.get("db:tournaments")))     await storage.set("db:tournaments", SEED_TOURNAMENTS);
+    const existingMatches = await storage.get("db:matches:t1");
+    if (!existingMatches || existingMatches.length < 72)
+      await storage.set("db:matches:t1", SEED_MATCHES_T1);
+    const tournaments = await storage.get("db:tournaments") || [];
     const t1 = tournaments.find(t => t.id === "t1");
     if (t1 && t1.groups && t1.groups.length < 12) {
       const idx = tournaments.indexOf(t1);
       tournaments[idx] = { ...SEED_TOURNAMENTS[0] };
-      await Store.set("db:tournaments", tournaments);
+      await storage.set("db:tournaments", tournaments);
     }
-
-    if(!(await Store.get("db:predictions:t1")))   await Store.set("db:predictions:t1", []);
-    if(!(await Store.get("db:leaderboard:t1")))   await Store.set("db:leaderboard:t1", {});
+    if (!(await storage.get("db:predictions:t1"))) await storage.set("db:predictions:t1", []);
+    if (!(await storage.get("db:leaderboard:t1"))) await storage.set("db:leaderboard:t1", {});
+    if (!(await storage.get("db:audit")))           await storage.set("db:audit", []);
+    if (!(await storage.get("db:invitations")))     await storage.set("db:invitations", []);
+    if (!(await storage.get("db:groups")))          await storage.set("db:groups", []);
+    if (!(await storage.get("db:memberships")))     await storage.set("db:memberships", []);
   }
 };
 
-// ============================================================
-// API LAYER
-// ============================================================
-const API = {
-  // AUTH
-  async login(username, password) {
-    if(!Security.rateLimit("rl:"+username,5,60000)) return {error:"Demasiados intentos. Esperá 60s."};
-    const users=await Store.get("db:users")||[];
-    const u=users.find(x=>x.username===Security.sanitize(username));
-    if(!u) return {error:"Credenciales inválidas"};
-    if(!u.active) return {error:"Tu cuenta está desactivada. Contactá al administrador."};
-    // Demo mode: accept any password for seed users (passwordHash === "demo_hash")
-    if(u.passwordHash !== "demo_hash") {
-      const hash = await Security.hashPassword(password||"");
-      if(hash !== u.passwordHash) return {error:"Credenciales inválidas"};
-    }
-    const token=Security.generateToken(u.id);
-    await API._audit(u.id,"LOGIN",{username});
-    return {token,user:{id:u.id,username:u.username,role:u.role,avatar:u.avatar}};
-  },
 
-  // USER MANAGEMENT (admin)
-  async getUsers(adminId, token) {
-    const p=Security.validateToken(token);
-    if(!p) return {error:"Token inválido"};
-    const users=await Store.get("db:users")||[];
-    if(!users.find(u=>u.id===p.userId&&u.role==="admin")) return {error:"Acceso denegado (A01)"};
-    // Never return passwords
-    return {success:true, users: users.map(u=>({id:u.id,username:u.username,role:u.role,avatar:u.avatar,active:u.active,createdAt:u.createdAt}))};
-  },
-
-  async adminCreateUser(adminId, data, token) {
-    const p=Security.validateToken(token);
-    if(!p) return {error:"Token inválido"};
-    const users=await Store.get("db:users")||[];
-    if(!users.find(u=>u.id===p.userId&&u.role==="admin")) return {error:"Acceso denegado (A01)"};
-    // Validations
-    if(!Security.validateUsername(data.username)) return {error:"Usuario inválido. Solo letras, números y _ (3-20 chars)"};
-    if(!Security.validatePassword(data.password||"")) return {error:"Contraseña requerida (mínimo 4 caracteres)"};
-    if(users.find(u=>u.username.toLowerCase()===data.username.toLowerCase())) return {error:"Ese nombre de usuario ya existe"};
-    const role=data.role==="admin"?"admin":"user";
-    const avatar=AVATARS.includes(data.avatar)?data.avatar:"⚽";
-    const passwordHash = await Security.hashPassword(data.password);
-    const newUser = {
-      id:"u_"+Date.now(),
-      username:Security.sanitize(data.username),
-      passwordHash,
-      role,
-      avatar,
-      active:true,
-      createdAt:new Date().toISOString().split("T")[0],
-    };
-    users.push(newUser);
-    await Store.set("db:users",users);
-    await API._audit(adminId,"CREATE_USER",{username:newUser.username,role});
-    return {success:true, user:{id:newUser.id,username:newUser.username,role:newUser.role,avatar:newUser.avatar,active:newUser.active,createdAt:newUser.createdAt}};
-  },
-
-  async adminUpdateUser(adminId, userId, fields, token) {
-    const p=Security.validateToken(token);
-    if(!p) return {error:"Token inválido"};
-    const users=await Store.get("db:users")||[];
-    if(!users.find(u=>u.id===p.userId&&u.role==="admin")) return {error:"Acceso denegado (A01)"};
-    const idx=users.findIndex(u=>u.id===userId);
-    if(idx<0) return {error:"Usuario no encontrado"};
-    if(users[idx].id==="u1"&&fields.role&&fields.role!=="admin") return {error:"No se puede cambiar el rol del admin principal"};
-    // Update allowed fields
-    if(fields.role!==undefined && ["admin","user"].includes(fields.role)) users[idx].role=fields.role;
-    if(fields.active!==undefined) users[idx].active=Boolean(fields.active);
-    if(fields.avatar!==undefined && AVATARS.includes(fields.avatar)) users[idx].avatar=fields.avatar;
-    if(fields.password) {
-      if(!Security.validatePassword(fields.password)) return {error:"Contraseña inválida (mínimo 4 caracteres)"};
-      users[idx].passwordHash = await Security.hashPassword(fields.password);
-    }
-    await Store.set("db:users",users);
-    await API._audit(adminId,"UPDATE_USER",{userId,fields:Object.keys(fields)});
-    return {success:true, user:{id:users[idx].id,username:users[idx].username,role:users[idx].role,avatar:users[idx].avatar,active:users[idx].active}};
-  },
-
-  async adminDeleteUser(adminId, userId, token) {
-    const p=Security.validateToken(token);
-    if(!p) return {error:"Token inválido"};
-    const users=await Store.get("db:users")||[];
-    if(!users.find(u=>u.id===p.userId&&u.role==="admin")) return {error:"Acceso denegado (A01)"};
-    if(userId==="u1") return {error:"No se puede eliminar el administrador principal"};
-    if(userId===adminId) return {error:"No podés eliminarte a vos mismo"};
-    const filtered=users.filter(u=>u.id!==userId);
-    if(filtered.length===users.length) return {error:"Usuario no encontrado"};
-    await Store.set("db:users",filtered);
-    await API._audit(adminId,"DELETE_USER",{userId});
-    return {success:true};
-  },
-
-  // ── INVITATION SYSTEM ──────────────────────────────────────
-  // Schema: { id, code, tId, tName, invitedBy, invitedByName,
-  //           status: "pending"|"registered"|"approved"|"rejected",
-  //           newUsername, newPasswordHash, newAvatar,
-  //           createdAt, resolvedAt }
-  // Flow:
-  //   1. Any active user → createInvitation(tId)  → gets a code
-  //   2. Invitee opens app → sees "Tengo un código" → registerWithCode()
-  //   3. Admin → approveInvitation() / rejectInvitation()
-  //   4. On approve → user is created active, can login immediately
-
-  async createInvitation(userId, tId) {
-    const users  = await Store.get("db:users") || [];
-    const inviter = users.find(u => u.id === userId && u.active);
-    if (!inviter) return { error: "Usuario no encontrado" };
-    const tournaments = await Store.get("db:tournaments") || [];
-    const tournament  = tournaments.find(t => t.id === tId);
-    if (!tournament) return { error: "Torneo no encontrado" };
-    // Rate limit: max 5 active invitations per user
-    const invitations = await Store.get("db:invitations") || [];
-    const activeByUser = invitations.filter(i => i.invitedBy === userId && i.status === "pending");
-    if (activeByUser.length >= 5) return { error: "Límite de 5 invitaciones pendientes por usuario" };
-    // Generate unique 8-char alphanumeric code
-    const code = Math.random().toString(36).slice(2,6).toUpperCase() +
-                 Math.random().toString(36).slice(2,6).toUpperCase();
-    const inv = {
-      id: "inv_" + Date.now(),
-      code,
-      tId,
-      tName: tournament.name,
-      invitedBy: userId,
-      invitedByName: inviter.username,
-      status: "pending",
-      newUsername: null, newPasswordHash: null, newAvatar: null,
-      createdAt: new Date().toISOString(),
-      resolvedAt: null,
-    };
-    invitations.push(inv);
-    await Store.set("db:invitations", invitations);
-    await API._audit(userId, "CREATE_INVITATION", { code, tId });
-    return { success: true, invitation: inv };
-  },
-
-  async registerWithCode(code, username, password, avatar) {
-    if (!Security.rateLimit("rl:reg:" + code, 5, 300000))
-      return { error: "Demasiados intentos con este código. Esperá 5 minutos." };
-    const invitations = await Store.get("db:invitations") || [];
-    const idx = invitations.findIndex(i => i.code === code.toUpperCase().trim() && i.status === "pending");
-    if (idx < 0) return { error: "Código inválido o ya utilizado" };
-    if (!Security.validateUsername(username)) return { error: "Usuario inválido (3-20 chars, letras/números/_)" };
-    if (!Security.validatePassword(password)) return { error: "Contraseña mínimo 4 caracteres" };
-    const users = await Store.get("db:users") || [];
-    if (users.find(u => u.username.toLowerCase() === username.toLowerCase()))
-      return { error: "Ese nombre de usuario ya existe" };
-    const validAvatars = AVATARS;
-    const safeAvatar = validAvatars.includes(avatar) ? avatar : "⚽";
-    const passwordHash = await Security.hashPassword(password);
-    invitations[idx] = {
-      ...invitations[idx],
-      status: "registered",
-      newUsername: Security.sanitize(username),
-      newPasswordHash: passwordHash,
-      newAvatar: safeAvatar,
-    };
-    await Store.set("db:invitations", invitations);
-    await API._audit("anon", "REGISTER_WITH_CODE", { code, username });
-    return { success: true, invitation: invitations[idx] };
-  },
-
-  async getInvitations(adminId, token) {
-    const p = Security.validateToken(token);
-    if (!p) return { error: "Token inválido" };
-    const users = await Store.get("db:users") || [];
-    if (!users.find(u => u.id === p.userId && u.role === "admin"))
-      return { error: "Acceso denegado (A01)" };
-    const invitations = await Store.get("db:invitations") || [];
-    return { success: true, invitations };
-  },
-
-  async getMyInvitations(userId) {
-    const invitations = await Store.get("db:invitations") || [];
-    return invitations.filter(i => i.invitedBy === userId);
-  },
-
-  async approveInvitation(adminId, invId, token) {
-    const p = Security.validateToken(token);
-    if (!p) return { error: "Token inválido" };
-    const users = await Store.get("db:users") || [];
-    if (!users.find(u => u.id === p.userId && u.role === "admin"))
-      return { error: "Acceso denegado (A01)" };
-    const invitations = await Store.get("db:invitations") || [];
-    const idx = invitations.findIndex(i => i.id === invId && i.status === "registered");
-    if (idx < 0) return { error: "Invitación no encontrada o en estado incorrecto" };
-    const inv = invitations[idx];
-    // Check username not taken (could have been created in the meantime)
-    if (users.find(u => u.username.toLowerCase() === inv.newUsername.toLowerCase()))
-      return { error: "El nombre de usuario ya fue tomado por otro registro" };
-    const newUser = {
-      id: "u_" + Date.now(),
-      username: inv.newUsername,
-      passwordHash: inv.newPasswordHash,
-      role: "user",
-      avatar: inv.newAvatar,
-      active: true,
-      createdAt: new Date().toISOString().split("T")[0],
-      invitedBy: inv.invitedBy,
-      invitedByName: inv.invitedByName,
-    };
-    users.push(newUser);
-    await Store.set("db:users", users);
-    invitations[idx] = { ...inv, status: "approved", resolvedAt: new Date().toISOString() };
-    await Store.set("db:invitations", invitations);
-    await API._audit(adminId, "APPROVE_INVITATION", { invId, username: inv.newUsername });
-    return { success: true, user: newUser };
-  },
-
-  async rejectInvitation(adminId, invId, token) {
-    const p = Security.validateToken(token);
-    if (!p) return { error: "Token inválido" };
-    const users = await Store.get("db:users") || [];
-    if (!users.find(u => u.id === p.userId && u.role === "admin"))
-      return { error: "Acceso denegado (A01)" };
-    const invitations = await Store.get("db:invitations") || [];
-    const idx = invitations.findIndex(i => i.id === invId && ["pending","registered"].includes(i.status));
-    if (idx < 0) return { error: "Invitación no encontrada" };
-    invitations[idx] = { ...invitations[idx], status: "rejected", resolvedAt: new Date().toISOString() };
-    await Store.set("db:invitations", invitations);
-    await API._audit(adminId, "REJECT_INVITATION", { invId });
-    return { success: true };
-  },
-
-  async cancelInvitation(userId, invId) {
-    const invitations = await Store.get("db:invitations") || [];
-    const idx = invitations.findIndex(i => i.id === invId && i.invitedBy === userId && i.status === "pending");
-    if (idx < 0) return { error: "Invitación no encontrada" };
-    invitations[idx] = { ...invitations[idx], status: "rejected", resolvedAt: new Date().toISOString() };
-    await Store.set("db:invitations", invitations);
-    await API._audit(userId, "CANCEL_INVITATION", { invId });
-    return { success: true };
-  },
-
-  // TOURNAMENTS
-  async getTournaments(){return (await Store.get("db:tournaments"))||[];},
-  async getTournament(tId){const l=await Store.get("db:tournaments")||[];return l.find(t=>t.id===tId)||null;},
-
-  async adminCreateTournament(adminId,data,token){
-    const p=Security.validateToken(token);if(!p)return{error:"Token inválido"};
-    const users=await Store.get("db:users")||[];if(!users.find(u=>u.id===p.userId&&u.role==="admin"))return{error:"Acceso denegado (A01)"};
-    if(!data.name||!data.startDate||!data.endDate)return{error:"Nombre y fechas son requeridos"};
-    const list=await Store.get("db:tournaments")||[];
-    const tId="t_"+Date.now();
-    const groups=(data.groups||"").split(",").map(g=>g.trim().toUpperCase()).filter(Boolean);
-    const t={id:tId,name:Security.sanitize(data.name),shortName:Security.sanitize(data.shortName||data.name.split(" ").slice(-2).join(" ")),region:Security.sanitize(data.region||"Global"),status:["upcoming","active","finished"].includes(data.status)?data.status:"upcoming",logo:["🌍","🌎","🌏","⚽","🏆","⭐","🥇","🎯"].includes(data.logo)?data.logo:"🏆",startDate:Security.sanitize(data.startDate),endDate:Security.sanitize(data.endDate),groups:groups.length?groups:["A","B","C","D"],source:data.source||"manual",fifaCompId:data.fifaCompId||null,fifaSeasonId:data.fifaSeasonId||null};
-    list.push(t);await Store.set("db:tournaments",list);await Store.set("db:matches:"+tId,[]);await Store.set("db:predictions:"+tId,[]);await Store.set("db:leaderboard:"+tId,{});
-    await API._audit(adminId,"CREATE_TOURNAMENT",{tId,name:t.name});return{success:true,tournament:t};
-  },
-  async adminDeleteTournament(adminId,tId,token){
-    const p=Security.validateToken(token);if(!p)return{error:"Token inválido"};
-    const users=await Store.get("db:users")||[];if(!users.find(u=>u.id===p.userId&&u.role==="admin"))return{error:"Acceso denegado (A01)"};
-    if(tId==="t1")return{error:"No se puede eliminar el torneo base"};
-    const list=await Store.get("db:tournaments")||[];const f=list.filter(t=>t.id!==tId);if(f.length===list.length)return{error:"No encontrado"};
-    await Store.set("db:tournaments",f);await API._audit(adminId,"DELETE_TOURNAMENT",{tId});return{success:true};
-  },
-  async adminUpdateTournament(adminId,tId,fields,token){
-    const p=Security.validateToken(token);if(!p)return{error:"Token inválido"};
-    const users=await Store.get("db:users")||[];if(!users.find(u=>u.id===p.userId&&u.role==="admin"))return{error:"Acceso denegado (A01)"};
-    const list=await Store.get("db:tournaments")||[];const idx=list.findIndex(t=>t.id===tId);if(idx<0)return{error:"No encontrado"};
-    const allowed=["status","name","startDate","endDate","region"];const safe={};
-    for(const k of allowed)if(fields[k]!==undefined)safe[k]=Security.sanitize(String(fields[k]));
-    list[idx]={...list[idx],...safe};await Store.set("db:tournaments",list);await API._audit(adminId,"UPDATE_TOURNAMENT",{tId,...safe});return{success:true,tournament:list[idx]};
-  },
-
-  // MATCHES
-  async adminAddMatch(adminId,tId,matchData,token){
-    const p=Security.validateToken(token);if(!p)return{error:"Token inválido"};
-    const users=await Store.get("db:users")||[];if(!users.find(u=>u.id===p.userId&&u.role==="admin"))return{error:"Acceso denegado (A01)"};
-    if(!matchData.homeTeam||!matchData.awayTeam)return{error:"Equipos requeridos"};
-    const key="db:matches:"+tId;const matches=await Store.get(key)||[];
-    const match={
-      id:"m_"+Date.now(),
-      tId,
-      group:Security.sanitize(matchData.group||"A"),
-      stage:Security.sanitize(matchData.stage||"Grupo "+matchData.group),
-      homeTeam:Security.sanitize(matchData.homeTeam),
-      awayTeam:Security.sanitize(matchData.awayTeam),
-      date:Security.sanitize(matchData.date||""),
-      time:Security.sanitize(matchData.time||"18:00"),
-      homeScore:null,awayScore:null,status:"upcoming",
-      // Dynamic propagation fields (optional)
-      ...(matchData.nextMatchWinnerId  && {nextMatchWinnerId:  Security.sanitize(matchData.nextMatchWinnerId)}),
-      ...(matchData.nextMatchWinnerSlot&& {nextMatchWinnerSlot:matchData.nextMatchWinnerSlot==="away"?"away":"home"}),
-      ...(matchData.nextMatchLoserId   && {nextMatchLoserId:   Security.sanitize(matchData.nextMatchLoserId)}),
-      ...(matchData.nextMatchLoserSlot && {nextMatchLoserSlot: matchData.nextMatchLoserSlot==="away"?"away":"home"}),
-    };
-    matches.push(match);await Store.set(key,matches);await API._audit(adminId,"ADD_MATCH",{tId,matchId:match.id});return{success:true,match};
-  },
-  async adminImportFromFIFA(adminId,tId,idC,idS,token){
-    const p=Security.validateToken(token);if(!p)return{error:"Token inválido"};
-    const users=await Store.get("db:users")||[];if(!users.find(u=>u.id===p.userId&&u.role==="admin"))return{error:"Acceso denegado (A01)"};
-    const res=await FIFA_API.getMatches(idC,idS);if(res.error)return{error:"FIFA API: "+res.error,corsBlocked:true};
-    const matches=(res.Results||[]).map(m=>FIFA_API.transformMatch(m,tId));if(!matches.length)return{error:"Sin partidos"};
-    await Store.set("db:matches:"+tId,matches);await API._audit(adminId,"IMPORT_FIFA",{tId,count:matches.length});return{success:true,count:matches.length};
-  },
-  async getMatches(tId,userId){
-    const matches=await Store.get("db:matches:"+tId)||[];const preds=await Store.get("db:predictions:"+tId)||[];
-    return matches.map(m=>({...m,myPrediction:preds.find(p=>p.matchId===m.id&&p.userId===userId)||null}));
-  },
-  async adminUpdateMatch(adminId,tId,matchId,homeScore,awayScore,token){
-    const p=Security.validateToken(token);if(!p)return{error:"Token inválido"};
-    const users=await Store.get("db:users")||[];if(!users.find(u=>u.id===p.userId&&u.role==="admin"))return{error:"Acceso denegado (A01)"};
-    if(!Security.validateScore(homeScore)||!Security.validateScore(awayScore))return{error:"Marcador inválido"};
-    const key="db:matches:"+tId;const matches=await Store.get(key)||[];const idx=matches.findIndex(m=>m.id===matchId);if(idx<0)return{error:"No encontrado"};
-    matches[idx]={...matches[idx],homeScore:parseInt(homeScore),awayScore:parseInt(awayScore),status:"finished"};
-    await Store.set(key,matches);
-    await API._calcPoints(tId,matchId,parseInt(homeScore),parseInt(awayScore));
-    await API._propagateTBD(tId, matches[idx], parseInt(homeScore), parseInt(awayScore));
-    await API._audit(adminId,"UPDATE_MATCH",{tId,matchId,homeScore,awayScore});return{success:true};
-  },
-
-  async savePrediction(userId,tId,matchId,homeScore,awayScore){
-    if(!Security.validateScore(homeScore)||!Security.validateScore(awayScore))return{error:"Marcador inválido"};
-    const matches=await Store.get("db:matches:"+tId)||[];const match=matches.find(m=>m.id===matchId);
-    if(!match||match.status==="finished")return{error:"No se puede pronosticar"};
-    const pKey="db:predictions:"+tId;const preds=await Store.get(pKey)||[];
-    const idx=preds.findIndex(p=>p.matchId===matchId&&p.userId===userId);
-    const pred={id:"p_"+Date.now(),userId,matchId,tId,homeScore:parseInt(homeScore),awayScore:parseInt(awayScore),createdAt:new Date().toISOString(),points:0};
-    if(idx>=0)preds[idx]=pred;else preds.push(pred);
-    await Store.set(pKey,preds);await API._audit(userId,"PREDICT",{tId,matchId,homeScore,awayScore});return{success:true,prediction:pred};
-  },
-
-  // ── TBD PROPAGATION — DINÁMICA (funciona para CUALQUIER torneo) ──
-  //
-  // Cada partido knockout puede tener en su schema:
-  //   nextMatchWinnerId : id del partido al que avanza el ganador
-  //   nextMatchWinnerSlot: "home" | "away"
-  //   nextMatchLoserId  : id del partido al que va el perdedor (ej: 3er puesto)
-  //   nextMatchLoserSlot: "home" | "away"
-  //
-  // Si estos campos existen → propagación dinámica (aplica a todos los torneos).
-  // Si NO existen        → intenta el mapa estático legado del Mundial 2026.
-  //
-  async _propagateTBD(tId, match, homeScore, awayScore) {
-    const key     = "db:matches:" + tId;
-    const matches = await Store.get(key) || [];
-
-    const winner = homeScore > awayScore ? match.homeTeam : match.awayTeam;
-    const loser  = homeScore > awayScore ? match.awayTeam : match.homeTeam;
-
-    // ── DYNAMIC PROPAGATION (nextMatchWinnerId / nextMatchLoserId) ──────────
-    let changed = false;
-
-    if (match.nextMatchWinnerId) {
-      const idx = matches.findIndex(m => m.id === match.nextMatchWinnerId);
-      if (idx >= 0) {
-        const slot = match.nextMatchWinnerSlot === "away" ? "awayTeam" : "homeTeam";
-        matches[idx][slot] = winner;
-        changed = true;
-      }
-    }
-
-    if (match.nextMatchLoserId) {
-      const idx = matches.findIndex(m => m.id === match.nextMatchLoserId);
-      if (idx >= 0) {
-        const slot = match.nextMatchLoserSlot === "away" ? "awayTeam" : "homeTeam";
-        matches[idx][slot] = loser;
-        changed = true;
-      }
-    }
-
-    if (changed) {
-      await Store.set(key, matches);
-      return;
-    }
-
-    // ── LEGACY STATIC MAP (Mundial 2026 hardcoded ids) ──────────────────────
-    const isKnockout = ["Ronda de 32","Octavos de final","Cuartos de final","Semifinal"].includes(match.stage);
-    if (!isKnockout) return;
-
-    const WINNER_SLOTS = {
-      "r32_1":"TBD:Gan. R32-1","r32_2":"TBD:Gan. R32-2","r32_3":"TBD:Gan. R32-3","r32_4":"TBD:Gan. R32-4",
-      "r32_5":"TBD:Gan. R32-5","r32_6":"TBD:Gan. R32-6","r32_7":"TBD:Gan. R32-7","r32_8":"TBD:Gan. R32-8",
-      "r32_9":"TBD:Gan. R32-9","r32_10":"TBD:Gan. R32-10","r32_11":"TBD:Gan. R32-11","r32_12":"TBD:Gan. R32-12",
-      "r32_13":"TBD:Gan. R32-13","r32_14":"TBD:Gan. R32-14","r32_15":"TBD:Gan. R32-15","r32_16":"TBD:Gan. R32-16",
-      "r16_1":"TBD:Gan. Oct-1","r16_2":"TBD:Gan. Oct-2","r16_3":"TBD:Gan. Oct-3","r16_4":"TBD:Gan. Oct-4",
-      "r16_5":"TBD:Gan. Oct-5","r16_6":"TBD:Gan. Oct-6","r16_7":"TBD:Gan. Oct-7","r16_8":"TBD:Gan. Oct-8",
-      "qf1":"TBD:Gan. CF-1","qf2":"TBD:Gan. CF-2","qf3":"TBD:Gan. CF-3","qf4":"TBD:Gan. CF-4",
-      "sf1_winner":"TBD:Gan. SF-1","sf2_winner":"TBD:Gan. SF-2",
-      "sf1_loser":"TBD:Per. SF-1","sf2_loser":"TBD:Per. SF-2",
-    };
-
-    let winSlot  = match.id === "sf1" ? WINNER_SLOTS["sf1_winner"]
-                 : match.id === "sf2" ? WINNER_SLOTS["sf2_winner"]
-                 : WINNER_SLOTS[match.id];
-    let loseSlot = match.id === "sf1" ? WINNER_SLOTS["sf1_loser"]
-                 : match.id === "sf2" ? WINNER_SLOTS["sf2_loser"]
-                 : null;
-
-    for (const m of matches) {
-      if (winSlot  && (m.homeTeam === winSlot  || m.awayTeam === winSlot))  { m[m.homeTeam === winSlot  ? "homeTeam" : "awayTeam"] = winner; changed = true; }
-      if (loseSlot && (m.homeTeam === loseSlot || m.awayTeam === loseSlot)) { m[m.homeTeam === loseSlot ? "homeTeam" : "awayTeam"] = loser;  changed = true; }
-    }
-    if (changed) await Store.set(key, matches);
-  },
-
-  async _calcPoints(tId,matchId,rH,rA){
-    const pKey="db:predictions:"+tId;const lKey="db:leaderboard:"+tId;
-    const preds=await Store.get(pKey)||[];const lb=await Store.get(lKey)||{};
-    for(const p of preds){
-      if(p.matchId!==matchId)continue;
-      const exact=p.homeScore===rH&&p.awayScore===rA;
-      const pW=p.homeScore>p.awayScore,rW=rH>rA,pD=p.homeScore===p.awayScore,rD=rH===rA,pAW=p.homeScore<p.awayScore,rAW=rH<rA;
-      p.points=exact?3:((pW&&rW)||(pD&&rD)||(pAW&&rAW))?1:0;
-      lb[p.userId]=(lb[p.userId]||0)+p.points;
-    }
-    await Store.set(pKey,preds);await Store.set(lKey,lb);
-  },
-
-  async getLeaderboard(tId){
-    const users=await Store.get("db:users")||[];const preds=await Store.get("db:predictions:"+tId)||[];const lb=await Store.get("db:leaderboard:"+tId)||{};
-    return users.filter(u=>u.role==="user"&&u.active).map(u=>({...u,points:lb[u.id]||0,predictions:preds.filter(p=>p.userId===u.id).length,exact:preds.filter(p=>p.userId===u.id&&p.points===3).length})).sort((a,b)=>b.points-a.points||b.predictions-a.predictions);
-  },
-
-  async getUserPoints(userId,tId){const lb=await Store.get("db:leaderboard:"+tId)||{};return lb[userId]||0;},
-
-  async _audit(userId,action,details){
-    const log=await Store.get("db:audit")||[];
-    log.push({ts:new Date().toISOString(),userId,action,details});
-    if(log.length>300)log.splice(0,log.length-300);
-    await Store.set("db:audit",log);
-  }
-};
 
 // ============================================================
 // STYLES
@@ -928,6 +1032,34 @@ details summary::-webkit-details-marker{display:none}
 details[open] summary{margin-bottom:0}
 .db-dot{width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;box-shadow:0 0 5px var(--green);vertical-align:middle}
 .empty{text-align:center;padding:40px;color:var(--tx3);font-family:'Barlow Condensed',sans-serif;letter-spacing:2px;text-transform:uppercase;font-size:11px}
+
+/* GROUPS */
+.groups-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.group-card{background:var(--sf);border:1px solid var(--bd);border-radius:2px;overflow:hidden;cursor:pointer;transition:transform .15s,border-color .2s,box-shadow .2s;position:relative}
+.group-card:hover{transform:translateY(-2px);border-color:var(--gold);box-shadow:0 6px 20px rgba(201,168,76,.1)}
+.group-card-top{padding:16px 18px;border-bottom:1px solid var(--bd)}
+.group-card-name{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;line-height:1.2;margin-bottom:4px}
+.group-card-meta{font-size:11px;color:var(--tx3);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px}
+.group-card-bot{padding:10px 18px;display:flex;align-items:center;justify-content:space-between}
+.owner-chip{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;padding:2px 8px;border-radius:8px;font-weight:600;background:rgba(201,168,76,.12);color:var(--gold);border:1px solid rgba(201,168,76,.25)}
+.member-chip{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-family:'Barlow Condensed',sans-serif;padding:2px 8px;border-radius:8px;font-weight:600;background:rgba(74,158,255,.12);color:var(--blue);border:1px solid rgba(74,158,255,.25)}
+.group-code-box{background:var(--bg);border:2px dashed rgba(201,168,76,.4);border-radius:4px;padding:14px;text-align:center;margin:12px 0}
+.group-code{font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:8px;color:var(--gold);display:block;margin-bottom:4px}
+.group-code-hint{font-size:10px;color:var(--tx3);font-family:'Barlow Condensed',sans-serif;letter-spacing:1px}
+.back-btn{background:transparent;border:1px solid var(--bd);color:var(--tx2);padding:6px 14px;border-radius:2px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;display:inline-flex;align-items:center;gap:6px;transition:all .2s}.back-btn:hover{border-color:var(--gold);color:var(--gold)}
+.group-hero{background:linear-gradient(135deg,#0a1628,#1a2a40);padding:20px 22px;border-bottom:2px solid var(--gold);display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.group-hero-info{}
+.group-hero-name{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:var(--tx);line-height:1}
+.group-hero-sub{font-size:11px;color:var(--gold);font-family:'Barlow Condensed',sans-serif;letter-spacing:2px;text-transform:uppercase;margin-top:4px}
+.group-tabs{display:flex;gap:4px;padding:10px 16px;background:var(--sf2);border-bottom:1px solid var(--bd)}
+.group-tab{background:transparent;border:none;color:var(--tx3);padding:5px 12px;font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+.group-tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+.members-list{display:flex;flex-direction:column;gap:6px}
+.member-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--sf2);border-radius:2px;border:1px solid var(--bd)}
+.member-av{font-size:20px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:var(--bg);border-radius:50%;border:1px solid var(--bd);flex-shrink:0}
+.member-name{font-size:13px;font-weight:500;flex:1}
+.copy-code-btn{background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);color:var(--gold);padding:4px 10px;border-radius:2px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:1.5px;transition:all .2s}
+.copy-code-btn:hover{background:rgba(201,168,76,.2)}
 .pts-info{margin-top:11px;padding:10px 13px;background:var(--sf);border:1px solid var(--bd);border-radius:2px;font-size:11px;color:var(--tx3)}
 .divider{border:none;border-top:1px solid var(--bd);margin:16px 0}
 .confirm-modal{text-align:center;padding:8px 0}
@@ -995,6 +1127,288 @@ function statusLabel(s){return s==="active"?"🟢 En curso":s==="upcoming"?"🟡
 function statusClass(s){return s==="active"?"s-act":s==="upcoming"?"s-up":"s-fin";}
 
 // ============================================================
+
+// ============================================================
+// GROUPS UI
+// ============================================================
+
+function CreateGroupModal({ user, onClose, onCreated, showToast }) {
+  const { groups: groupSvc, tournaments: tournSvc } = useServices();
+  const [tournaments, setTournaments] = useState([]);
+  const [form, setForm] = useState({ name: "", tournamentId: "" });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => { tournSvc.getAll().then(setTournaments); }, []);
+  const handleCreate = async () => {
+    setErr(""); setSaving(true);
+    const r = await groupSvc.create(user.id, form);
+    setSaving(false);
+    if (r.error) { setErr(r.error); return; }
+    showToast("¡Grupo creado! Compartí el código con tus amigos.");
+    onCreated(r.group); onClose();
+  };
+  return(
+    <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal" style={{maxWidth:440}}>
+        <div className="modal-hdr">
+          <div className="modal-title">NUEVO GRUPO</div>
+          <button className="btn btn-ghost" style={{padding:"3px 9px",fontSize:15}} onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {err&&<div className="msg-err">{err}</div>}
+          <div className="field"><label>Nombre del grupo *</label>
+            <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder='"La Quiniela de la Oficina"' maxLength={60}/>
+          </div>
+          <div className="field"><label>Torneo base *</label>
+            <select value={form.tournamentId} onChange={e=>setForm(f=>({...f,tournamentId:e.target.value}))}>
+              <option value="">— Seleccioná un torneo —</option>
+              {tournaments.map(t=><option key={t.id} value={t.id}>{t.logo} {t.name}</option>)}
+            </select>
+          </div>
+          <p style={{fontSize:11,color:"var(--tx3)",lineHeight:1.6}}>Se genera un <strong style={{color:"var(--tx2)"}}>código único</strong> para compartir con tus amigos.</p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-gold" onClick={handleCreate} disabled={saving||!form.name.trim()||!form.tournamentId}>
+            {saving?"CREANDO...":"CREAR GRUPO"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JoinGroupModal({ user, onClose, onJoined, showToast }) {
+  const { groups: groupSvc } = useServices();
+  const [code, setCode] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [err, setErr] = useState("");
+  const handleJoin = async () => {
+    setErr(""); setJoining(true);
+    const r = await groupSvc.joinByCode(user.id, code);
+    setJoining(false);
+    if (r.error) { setErr(r.error); return; }
+    showToast(`¡Te uniste a "${r.group.name}"!`); onJoined(r.group); onClose();
+  };
+  return(
+    <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal" style={{maxWidth:360}}>
+        <div className="modal-hdr">
+          <div className="modal-title">UNIRME A UN GRUPO</div>
+          <button className="btn btn-ghost" style={{padding:"3px 9px",fontSize:15}} onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {err&&<div className="msg-err">{err}</div>}
+          <div className="field"><label>Código del grupo (6 caracteres)</label>
+            <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="ej: A3B7C9" maxLength={6}
+              style={{textAlign:"center",letterSpacing:6,fontSize:20,fontFamily:"Bebas Neue"}}
+              onKeyDown={e=>e.key==="Enter"&&handleJoin()}/>
+          </div>
+          <p style={{fontSize:11,color:"var(--tx3)"}}>Pedile el código al organizador de tu grupo.</p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-gold" onClick={handleJoin} disabled={joining||code.length<6}>
+            {joining?"UNIÉNDOME...":"UNIRME"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupDetail({ group, user, token, showToast, onBack }) {
+  const { matches:matchSvc, predictions:predSvc, groupLeaderboard:lbSvc, groups:groupSvc } = useServices();
+  const [innerTab, setInnerTab] = useState("matches");
+  const [matches, setMatches]   = useState([]);
+  const [leaders, setLeaders]   = useState([]);
+  const [members, setMembers]   = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [copied, setCopied]     = useState(false);
+  const [matchGroup, setMatchGroup] = useState("ALL");
+
+  const GROUP_LABELS={A:"Grupo A",B:"Grupo B",C:"Grupo C",D:"Grupo D",E:"Grupo E",F:"Grupo F",G:"Grupo G",H:"Grupo H",I:"Grupo I",J:"Grupo J",K:"Grupo K",L:"Grupo L",R32:"Ronda de 32",R16:"Octavos",QF:"Cuartos",SF:"Semis","3P":"3er Puesto",FIN:"Final"};
+  const STAGE_ORDER=["A","B","C","D","E","F","G","H","I","J","K","L","R32","R16","QF","SF","3P","FIN"];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [m, lb, mem] = await Promise.all([
+      matchSvc.getForUser(group.tournamentId, user.id),
+      lbSvc.get(group.id, user.id),
+      groupSvc.getMembers(group.id, user.id),
+    ]);
+    setMatches(m);
+    if(lb.leaderboard) setLeaders(lb.leaderboard);
+    if(mem.members)    setMembers(mem.members);
+    setLoading(false);
+  }, [group.id, group.tournamentId, user.id]);
+  useEffect(()=>{load();},[load]);
+
+  const copyCode = () => {
+    navigator.clipboard?.writeText(`¡Sumate a mi grupo "${group.name}" en Super Campeones!\n\nCódigo: ${group.code}\n\nIngresá a la app → Mis Grupos → Unirme.`).catch(()=>{});
+    setCopied(true); setTimeout(()=>setCopied(false),2000);
+  };
+
+  const isOwner = group.ownerId===user.id;
+  const rc = i=>i===0?"g":i===1?"s":i===2?"b":"";
+  const avGroups=["ALL",...STAGE_ORDER.filter(g=>matches.some(m=>m.group===g))];
+  const filteredM=matchGroup==="ALL"?matches:matches.filter(m=>m.group===matchGroup);
+
+  return(
+    <div className="content">
+      <button className="back-btn" onClick={onBack}>← Mis grupos</button>
+      <div className="t-hero" style={{marginBottom:0}}>
+        <div className="group-hero">
+          <div className="group-hero-info">
+            <div className="group-hero-name">{group.name}</div>
+            <div className="group-hero-sub">{group.tournamentLogo||"🏆"} {group.tournamentName} · {members.length} miembro{members.length!==1?"s":""}</div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+            {isOwner?<span className="owner-chip">👑 Tuyo</span>:<span className="member-chip">👤 Miembro</span>}
+            <button className="copy-code-btn" onClick={copyCode}>{copied?"✓ Copiado":`📋 Código: ${group.code}`}</button>
+          </div>
+        </div>
+        <div className="group-tabs">
+          {[{id:"matches",label:"Partidos"},{id:"ranking",label:"Ranking"},{id:"members",label:"Miembros"}].map(t=>(
+            <button key={t.id} className={"group-tab"+(innerTab===t.id?" active":"")} onClick={()=>setInnerTab(t.id)}>{t.label}</button>
+          ))}
+          <div style={{flex:1}}/>
+          {isOwner
+            ?<button className="btn btn-red" style={{padding:"4px 10px",fontSize:10}} onClick={async()=>{if(!window.confirm(`¿Eliminar "${group.name}"?`))return;const r=await groupSvc.remove(user.id,group.id);if(r.success){showToast("Grupo eliminado");onBack();}else showToast(r.error,"err");}}>🗑 Eliminar</button>
+            :<button className="btn btn-ghost" style={{padding:"4px 10px",fontSize:10}} onClick={async()=>{if(!window.confirm("¿Salir del grupo?"))return;const r=await groupSvc.leave(user.id,group.id);if(r.success){showToast("Saliste del grupo");onBack();}else showToast(r.error,"err");}}>Salir</button>
+          }
+        </div>
+      </div>
+      {loading?<div className="empty">Cargando...</div>:(
+        <>
+          {innerTab==="matches"&&(
+            <div style={{marginTop:16}}>
+              <div className="groups-nav">
+                {avGroups.map(g=><button key={g} className={"group-btn"+(matchGroup===g?" active":"")} onClick={()=>setMatchGroup(g)}>{g==="ALL"?"Todos":(GROUP_LABELS[g]||"Grupo "+g)}</button>)}
+              </div>
+              <div className="matches-list">
+                {filteredM.map(m=>(
+                  <MatchCard key={m.id} match={m} tId={group.tournamentId} userId={user.id} token={token} isAdmin={false}
+                    onSave={async(mid,h,a)=>{const r=await predSvc.save(user.id,group.tournamentId,mid,h,a);if(r.success){showToast("Pronóstico guardado");await load();}else showToast(r.error,"err");return r;}}
+                    onAdminSave={()=>{}}/>
+                ))}
+              </div>
+            </div>
+          )}
+          {innerTab==="ranking"&&(
+            <div style={{marginTop:16}}>
+              <div className="lb">
+                <div className="lb-row hdr"><div>#</div><div>Jugador</div><div style={{textAlign:"right"}}>Pts</div><div style={{textAlign:"center"}}>Pred</div><div style={{textAlign:"center"}}>Exactos</div></div>
+                {leaders.length===0?<div className="empty">Sin predicciones aún</div>:
+                  leaders.map((u,i)=>(
+                    <div key={u.id} className="lb-row" style={u.id===user.id?{background:"rgba(201,168,76,.05)",borderLeft:"2px solid var(--gold)"}:{}}>
+                      <div className={"rank "+rc(i)}>{i+1}</div>
+                      <div className="lb-user"><div className="lb-av">{u.avatar}</div>
+                        <div><span style={{fontSize:13,fontWeight:500}}>{u.username}</span>
+                          {u.id===user.id&&<span style={{fontSize:9,color:"var(--gold)",fontFamily:"Barlow Condensed",letterSpacing:1,marginLeft:6}}>TÚ</span>}
+                          {u.role==="owner"&&<span style={{marginLeft:4}}>👑</span>}
+                        </div>
+                      </div>
+                      <div className="lb-pts">{u.points}</div>
+                      <div className="lb-n">{u.predictions}</div>
+                      <div className="lb-n" style={{color:"var(--gold)"}}>{u.exact}</div>
+                    </div>
+                  ))
+                }
+              </div>
+              <div className="pts-info" style={{marginTop:10}}>🥇 Exacto=<span style={{color:"var(--gold)"}}>3pts</span> · 🥈 Resultado=<span style={{color:"var(--gold)"}}>1pt</span> · ❌=0pts</div>
+            </div>
+          )}
+          {innerTab==="members"&&(
+            <div style={{marginTop:16}}>
+              <div style={{marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{fontSize:12,color:"var(--tx3)",fontFamily:"Barlow Condensed",letterSpacing:1}}>{members.length} miembro{members.length!==1?"s":""} · Código: <strong style={{color:"var(--gold)",letterSpacing:3,fontFamily:"Bebas Neue"}}>{group.code}</strong></div>
+                <button className="copy-code-btn" onClick={copyCode}>{copied?"✓":"📋 Compartir"}</button>
+              </div>
+              <div className="members-list">
+                {members.map(m=>(
+                  <div key={m.id} className="member-row">
+                    <div className="member-av">{m.avatar}</div>
+                    <div className="member-name">{m.username}{m.id===user.id&&<span style={{fontSize:9,color:"var(--gold)",marginLeft:6,fontFamily:"Barlow Condensed",letterSpacing:1}}>TÚ</span>}</div>
+                    {m.role==="owner"?<span className="owner-chip">👑 Dueño</span>:<span className="member-chip">Miembro</span>}
+                  </div>
+                ))}
+              </div>
+              <div className="group-code-box" style={{marginTop:16}}>
+                <span className="group-code">{group.code}</span>
+                <span className="group-code-hint">Compartí este código para invitar amigos</span>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MyGroupsView({ user, token, showToast }) {
+  const { groups: groupSvc } = useServices();
+  const [myGroups, setMyGroups]     = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showJoin, setShowJoin]     = useState(false);
+  const [activeGroup, setActiveGroup] = useState(null);
+
+  const load = useCallback(async () => {
+    const list = await groupSvc.getForUser(user.id);
+    setMyGroups(list); setLoading(false);
+  }, [user.id]);
+  useEffect(()=>{load();},[load]);
+
+  if(activeGroup) return <GroupDetail group={activeGroup} user={user} token={token} showToast={showToast} onBack={()=>{setActiveGroup(null);load();}}/>;
+
+  return(
+    <div className="content">
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:22,flexWrap:"wrap",gap:12}}>
+        <div>
+          <div className="sec-title">MIS GRUPOS</div>
+          <div className="sec-sub"><span className="db-dot"></span>{myGroups.length} grupo{myGroups.length!==1?"s":""} · Quinielas privadas</div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn btn-ghost" onClick={()=>setShowJoin(true)}>🔑 Unirme</button>
+          <button className="btn btn-gold" onClick={()=>setShowCreate(true)}>+ Crear grupo</button>
+        </div>
+      </div>
+      {loading?<div className="empty">Cargando...</div>:myGroups.length===0?(
+        <div style={{textAlign:"center",padding:"48px 20px"}}>
+          <div style={{fontSize:48,marginBottom:12}}>🏆</div>
+          <div style={{fontFamily:"Bebas Neue",fontSize:20,letterSpacing:3,color:"var(--tx2)",marginBottom:8}}>SIN GRUPOS AÚN</div>
+          <p style={{fontSize:13,color:"var(--tx3)",marginBottom:20}}>Creá tu propia quiniela privada o uníte a la de un amigo.</p>
+          <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+            <button className="btn btn-gold" onClick={()=>setShowCreate(true)}>+ Crear mi grupo</button>
+            <button className="btn btn-ghost" onClick={()=>setShowJoin(true)}>🔑 Tengo un código</button>
+          </div>
+        </div>
+      ):(
+        <div className="groups-grid">
+          {myGroups.map(g=>(
+            <div key={g.id} className="group-card" onClick={()=>setActiveGroup(g)}>
+              <div className="group-card-top">
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <span style={{fontSize:22}}>{g.tournamentLogo}</span>
+                  <div className="group-card-name">{g.name}</div>
+                </div>
+                <div className="group-card-meta">{g.tournamentName} · Creado {g.createdAt}</div>
+              </div>
+              <div className="group-card-bot">
+                <span className={g.myRole==="owner"?"owner-chip":"member-chip"}>{g.myRole==="owner"?"👑 Tuyo":"👤 Miembro"}</span>
+                <span style={{fontFamily:"Bebas Neue",fontSize:14,letterSpacing:3,color:"rgba(201,168,76,.5)"}}>{g.code}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {showCreate&&<CreateGroupModal user={user} onClose={()=>setShowCreate(false)} onCreated={load} showToast={showToast}/>}
+      {showJoin&&<JoinGroupModal user={user} onClose={()=>setShowJoin(false)} onJoined={load} showToast={showToast}/>}
+    </div>
+  );
+}
+
 // REGISTER WITH INVITATION CODE
 // ============================================================
 function RegisterWithCodeScreen({ onBack }) {
@@ -1010,8 +1424,9 @@ function RegisterWithCodeScreen({ onBack }) {
 
   const handleCheckCode = async () => {
     setErr(""); setLoading(true);
-    const invs = await Store.get("db:invitations") || [];
-    const inv = invs.find(i => i.code === code.toUpperCase().trim() && i.status === "pending");
+    const {invitations}=useServices();
+    const r2=await invitations.findByCode(code.toUpperCase().trim());
+    const inv=await (async()=>{const invs=await InvitationRepository.getAll();return invs.find(i=>i.code===code.toUpperCase().trim()&&i.status==="pending")||null;})();
     setLoading(false);
     if (!inv) { setErr("Código inválido o ya utilizado."); return; }
     setInv(inv); setStep(2);
@@ -1021,7 +1436,8 @@ function RegisterWithCodeScreen({ onBack }) {
     setErr("");
     if (password !== pwd2) { setErr("Las contraseñas no coinciden"); return; }
     setLoading(true);
-    const r = await API.registerWithCode(code, username, password, avatar);
+    const {invitations:invSvc}=useServices();
+    const r = await invSvc.registerWithCode(code, username, password, avatar);
     setLoading(false);
     if (r.error) { setErr(r.error); return; }
     setStep(3);
@@ -1113,6 +1529,7 @@ function RegisterWithCodeScreen({ onBack }) {
 // INVITATIONS VIEW
 // ============================================================
 function InvitationsView({ user, token, showToast, tournaments: tournamentsProp }) {
+  const {invitations:invSvc, tournaments:tournSvc} = useServices();
   const isAdmin = user.role === "admin";
   const [invitations, setInvitations] = useState([]);
   const [tournaments, setTournaments] = useState(tournamentsProp || []);
@@ -1124,8 +1541,8 @@ function InvitationsView({ user, token, showToast, tournaments: tournamentsProp 
   const load = useCallback(async () => {
     setLoading(true);
     const [tList, invData] = await Promise.all([
-      API.getTournaments(),
-      isAdmin ? API.getInvitations(user.id, token) : API.getMyInvitations(user.id),
+      TournamentService.getAll(),
+      isAdmin ? InvitationService.getAll(token) : Promise.resolve(await InvitationService.getForUser(user.id)),
     ]);
     setTournaments(tList);
     if (!selTId && tList.length) setSelTId(tList[0].id);
@@ -1139,7 +1556,7 @@ function InvitationsView({ user, token, showToast, tournaments: tournamentsProp 
   const handleCreate = async () => {
     if (!selTId) { showToast("Seleccioná un torneo", "err"); return; }
     setCreating(true);
-    const r = await API.createInvitation(user.id, selTId);
+    const r = await invSvc.create(user.id, selTId);
     setCreating(false);
     if (r.error) { showToast(r.error, "err"); return; }
     showToast("¡Código generado! Compartilo con tu amigo.");
@@ -1154,19 +1571,19 @@ function InvitationsView({ user, token, showToast, tournaments: tournamentsProp 
   };
 
   const handleApprove = async (invId) => {
-    const r = await API.approveInvitation(user.id, invId, token);
+    const r = await invSvc.approve(invId, token);
     if (r.success) { showToast(`✅ Usuario "${r.user.username}" creado y aprobado`); load(); }
     else showToast(r.error, "err");
   };
 
   const handleReject = async (invId) => {
-    const r = await API.rejectInvitation(user.id, invId, token);
+    const r = await invSvc.reject(invId, token);
     if (r.success) { showToast("Invitación rechazada"); load(); }
     else showToast(r.error, "err");
   };
 
   const handleCancel = async (invId) => {
-    const r = await API.cancelInvitation(user.id, invId);
+    const r = await invSvc.cancel(invId, user.id);
     if (r.success) { showToast("Invitación cancelada"); load(); }
     else showToast(r.error, "err");
   };
@@ -1269,10 +1686,11 @@ function InvitationsView({ user, token, showToast, tournaments: tournamentsProp 
 // LOGIN
 // ============================================================
 function LoginScreen({onLogin, onRegister}){
+  const {auth}=useServices();
   const [u,setU]=useState(""); const [pwd,setPwd]=useState(""); const [err,setErr]=useState(""); const [loading,setL]=useState(false);
   const go=async(name,pass)=>{
     setErr(""); setL(true);
-    const r=await API.login(name||u.trim(), pass||pwd);
+    const r=await auth.login(name||u.trim(), pass||pwd);
     setL(false);
     if(r.error) setErr(r.error); else onLogin(r.token,r.user);
   };
@@ -1336,6 +1754,7 @@ function ConfirmModal({title,message,onConfirm,onCancel,danger=true}){
 }
 
 function UserFormModal({editUser, token, currentUserId, onClose, onSaved, showToast}){
+  const {users:userSvc}=useServices();
   const isEdit = !!editUser;
   const [form,setForm]=useState({
     username: editUser?.username||"",
@@ -1354,9 +1773,9 @@ function UserFormModal({editUser, token, currentUserId, onClose, onSaved, showTo
     if(isEdit){
       const fields={role:form.role,avatar:form.avatar,active:form.active};
       if(form.password) fields.password=form.password;
-      r=await API.adminUpdateUser(currentUserId, editUser.id, fields, token);
+      r=await userSvc.update(editUser.id, fields, token);
     } else {
-      r=await API.adminCreateUser(currentUserId, form, token);
+      r=await userSvc.create(form, token);
     }
     setSaving(false);
     if(r.error){setErr(r.error);return;}
@@ -1434,10 +1853,11 @@ function UsersView({user, token, showToast}){
   const [pendingCount,setPendingCount]=useState(0);
 
   const load=useCallback(async()=>{
+    const {users:userSvc,tournaments:tournSvc2,invitations:invSvc2}=useServices();
     const [r, t, invs] = await Promise.all([
-      API.getUsers(user.id, token),
-      API.getTournaments(),
-      API.getInvitations(user.id, token),
+      userSvc.getAll(token),
+      tournSvc2.getAll(),
+      invSvc2.getAll(token),
     ]);
     if(r.users) setUsers(r.users);
     setTournaments(t);
@@ -1448,14 +1868,16 @@ function UsersView({user, token, showToast}){
   useEffect(()=>{load();},[load]);
 
   const handleDelete=async()=>{
-    const r=await API.adminDeleteUser(user.id,confirmDel.id,token);
+    const {users:userSvc3}=useServices();
+    const r=await userSvc3.remove(confirmDel.id,user.id,token);
     setConfirmDel(null);
     if(r.success){showToast("Usuario eliminado");load();}
     else showToast(r.error,"err");
   };
 
   const handleToggle=async()=>{
-    const r=await API.adminUpdateUser(user.id,confirmToggle.id,{active:!confirmToggle.active},token);
+    const {users:userSvc4}=useServices();
+    const r=await userSvc4.update(confirmToggle.id,{active:!confirmToggle.active},token);
     setConfirmToggle(null);
     if(r.success){showToast(r.user.active?"Usuario activado":"Usuario desactivado");load();}
     else showToast(r.error,"err");
@@ -1593,7 +2015,8 @@ function CreateTournamentModal({token,user,onClose,onCreated,showToast}){
 
   const handleCreate=async()=>{
     setFormErr(""); setSaving(true);
-    const r=await API.adminCreateTournament(user.id,{...form,source:"manual"},token);
+    const {tournaments:tournSvc}=useServices();
+    const r=await tournSvc.create({...form,source:"manual"},token);
     setSaving(false);
     if(r.error){setFormErr(r.error);return;}
     showToast("Torneo creado"); onCreated(); onClose();
@@ -1614,9 +2037,10 @@ function CreateTournamentModal({token,user,onClose,onCreated,showToast}){
     if(!selSeason) return;
     setSaving(true);
     const d={name:selSeason.Name?.[0]?.Description||query,shortName:selSeason.Name?.[0]?.Description||query,region:"Global",status:"upcoming",logo:"🌍",startDate:selSeason.StartDate?.split("T")[0]||"",endDate:selSeason.EndDate?.split("T")[0]||"",groups:"A,B,C,D,E,F,G,H",source:"fifa_api",fifaCompId:selCompId,fifaSeasonId:selSeason.IdSeason};
-    const cr=await API.adminCreateTournament(user.id,d,token);
+    const {tournaments:tournSvcF,matches:matchSvcF}=useServices();
+    const cr=await tournSvcF.create(d,token);
     if(cr.error){setSaving(false);setFormErr(cr.error);return;}
-    const ir=await API.adminImportFromFIFA(user.id,cr.tournament.id,selCompId,selSeason.IdSeason,token);
+    const ir=await matchSvcF.importFromFIFA(cr.tournament.id,selCompId,selSeason.IdSeason,token,FIFA_API);
     setSaving(false);
     if(ir.error){setCorsBlocked(ir.corsBlocked);setFormErr("Torneo creado sin partidos: "+ir.error);showToast("Torneo creado (sin partidos)","warn");onCreated();onClose();return;}
     showToast(`Importado: ${ir.count} partidos`); onCreated(); onClose();
@@ -1739,6 +2163,7 @@ function CreateTournamentModal({token,user,onClose,onCreated,showToast}){
 // TOURNAMENT LOBBY
 // ============================================================
 function TournamentLobby({user,token,onSelect,showToast}){
+  const {tournaments:tournSvc}=useServices();
   const [tournaments,setTournaments]=useState([]);
   const [loading,setLoading]=useState(true);
   const [showCreate,setShowCreate]=useState(false);
@@ -1746,12 +2171,12 @@ function TournamentLobby({user,token,onSelect,showToast}){
   const isAdmin=user.role==="admin";
 
   const load=useCallback(async()=>{
-    const t=await API.getTournaments();setTournaments(t);setLoading(false);
+    const t=await tournSvc.getAll();setTournaments(t);setLoading(false);
   },[]);
   useEffect(()=>{load();},[load]);
 
   const handleDelete=async()=>{
-    const r=await API.adminDeleteTournament(user.id,confirmDel.id,token);
+    const r=await tournSvc.remove(confirmDel.id,token);
     setConfirmDel(null);
     if(r.success){showToast("Torneo eliminado");load();}else showToast(r.error,"err");
   };
@@ -1880,6 +2305,7 @@ function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
 // MATCHES VIEW
 // ============================================================
 function MatchesView({tournament,user,token,showToast,onPointsUpdate}){
+  const {matches:matchSvc,tournaments:tournSvc,predictions:predSvc}=useServices();
   const [matches,setMatches]=useState([]);
   const [group,setGroup]=useState("ALL");
   const [loading,setLoading]=useState(true);
@@ -1896,7 +2322,7 @@ function MatchesView({tournament,user,token,showToast,onPointsUpdate}){
   const isAdmin=user.role==="admin";
 
   const load=useCallback(async()=>{
-    const m=await API.getMatches(tournament.id,user.id);setMatches(m);setLoading(false);
+    const m=await matchSvc.getForUser(tournament.id,user.id);setMatches(m);setLoading(false);
   },[tournament.id,user.id]);
   useEffect(()=>{setLoading(true);load();},[load]);
 
@@ -1904,7 +2330,7 @@ function MatchesView({tournament,user,token,showToast,onPointsUpdate}){
 
   const handleAddMatch=async()=>{
     setMatchErr("");setAddingMatch(true);
-    const r=await API.adminAddMatch(user.id,tournament.id,{...mForm,stage:mForm.stage||`Grupo ${mForm.group}`},token);
+    const r=await matchSvc.add(tournament.id,{...mForm,stage:mForm.stage||`Grupo ${mForm.group}`},token);
     setAddingMatch(false);
     if(r.error){setMatchErr(r.error);return;}
     showToast("Partido agregado");
@@ -1963,7 +2389,8 @@ function MatchesView({tournament,user,token,showToast,onPointsUpdate}){
                     <option value="upcoming">🟡 Próximo</option><option value="active">🟢 En curso</option><option value="finished">⚫ Finalizado</option>
                   </select>
                 </div>
-                <button className="btn btn-red" style={{alignSelf:"flex-end"}} onClick={async()=>{setSavingStatus(true);const r=await API.adminUpdateTournament(user.id,tournament.id,{status:editStatus},token);setSavingStatus(false);if(r.success)showToast("Estado actualizado");else showToast(r.error,"err");}} disabled={savingStatus}>
+                <button className="btn btn-red" style={{alignSelf:"flex-end"}} onClick={async()=>{setSavingStatus(true);const {tournaments:tournSvcU}=useServices();
+          const r=await tournSvcU.update(tournament.id,{status:editStatus},token);setSavingStatus(false);if(r.success)showToast("Estado actualizado");else showToast(r.error,"err");}} disabled={savingStatus}>
                   {savingStatus?"...":"ACTUALIZAR"}
                 </button>
               </div>
@@ -2039,8 +2466,8 @@ function MatchesView({tournament,user,token,showToast,onPointsUpdate}){
             <div className="empty">{isAdmin?"Sin partidos. Agregá uno.":"Sin partidos disponibles."}</div>
           ):filtered.map(m=>(
             <MatchCard key={m.id} match={m} tId={tournament.id} userId={user.id} token={token} isAdmin={isAdmin}
-              onSave={async(mid,h,a)=>{const r=await API.savePrediction(user.id,tournament.id,mid,h,a);if(r.success){showToast("Pronóstico guardado");await load();}else showToast(r.error,"err");return r;}}
-              onAdminSave={async(mid,h,a)=>{const r=await API.adminUpdateMatch(user.id,tournament.id,mid,h,a,token);if(r.success){showToast("Resultado guardado");await load();onPointsUpdate&&onPointsUpdate();}else showToast(r.error,"err");}}/>
+              onSave={async(mid,h,a)=>{const r=await predSvc.save(user.id,tournament.id,mid,h,a);if(r.success){showToast("Pronóstico guardado");await load();}else showToast(r.error,"err");return r;}}
+              onAdminSave={async(mid,h,a)=>{const r=await matchSvc.setResult(tournament.id,mid,h,a,token);if(r.success){showToast("Resultado guardado");await load();onPointsUpdate&&onPointsUpdate();}else showToast(r.error,"err");}}/>
           ))}
         </div>
       </div>
@@ -2052,12 +2479,13 @@ function MatchesView({tournament,user,token,showToast,onPointsUpdate}){
 // LEADERBOARD
 // ============================================================
 function LeaderboardView({activeTournament}){
+  const {leaderboard:lbSvc,tournaments:tournSvc}=useServices();
   const [tournaments,setTournaments]=useState([]);
   const [selId,setSelId]=useState(activeTournament?.id||null);
   const [leaders,setLeaders]=useState([]);
   const [loading,setLoading]=useState(true);
-  useEffect(()=>{API.getTournaments().then(l=>{setTournaments(l);if(!selId&&l.length)setSelId(l[0].id);});},[]);
-  useEffect(()=>{if(!selId)return;setLoading(true);API.getLeaderboard(selId).then(l=>{setLeaders(l);setLoading(false);});},[selId]);
+  useEffect(()=>{tournSvc.getAll().then(l=>{setTournaments(l);if(!selId&&l.length)setSelId(l[0].id);});},[]);
+  useEffect(()=>{if(!selId)return;setLoading(true);lbSvc.get(selId).then(l=>{setLeaders(l);setLoading(false);});},[selId]);
   const rc=i=>i===0?"g":i===1?"s":i===2?"b":"";
   const selT=tournaments.find(t=>t.id===selId);
   return(
@@ -2115,7 +2543,7 @@ export default function App(){
   const [tk,setTk]             = useState(0);
   const [pendingInvCount,setPendingInvCount] = useState(0);
 
-  useEffect(()=>{ Store.init().then(()=>setReady(true)); },[]);
+  useEffect(()=>{ DatabaseInitializer.init().then(()=>setReady(true)); },[]);
 
   const showToast=useCallback((msg,type="ok")=>{ setToast({msg,type}); setTk(k=>k+1); },[]);
   const handleLogin=(t,u)=>{ setToken(t); setUser(u); setReg(false); };
@@ -2123,7 +2551,7 @@ export default function App(){
 
   const refreshPts=useCallback(async()=>{
     if(!user||!activeTournament) return;
-    const pts=await API.getUserPoints(user.id,activeTournament.id);
+    const pts=await LeaderboardService.getForUser(user.id,activeTournament.id);
     setUser(p=>({...p,tournamentPoints:pts}));
   },[user,activeTournament]);
 
@@ -2131,7 +2559,7 @@ export default function App(){
   useEffect(()=>{
     if(!user||user.role!=="admin") return;
     const check=async()=>{
-      const r=await API.getInvitations(user.id,token);
+      const r=await InvitationService.getAll(token);
       if(r.invitations) setPendingInvCount(r.invitations.filter(i=>i.status==="registered").length);
     };
     check();
@@ -2143,9 +2571,10 @@ export default function App(){
 
   const tabs=[
     {id:"lobby",        label:"Torneos"},
+    {id:"mygroups",     label:"Mis Grupos"},
     {id:"matches",      label:"Partidos",      dis:!activeTournament},
     {id:"leaderboard",  label:"Clasificación"},
-    {id:"invitations",  label:"Invitaciones"},  // visible to all logged-in users
+    {id:"invitations",  label:"Invitaciones"},
     ...(isAdmin?[{id:"users",label:"Usuarios"}]:[]),
   ];
 
@@ -2154,6 +2583,7 @@ export default function App(){
   return(
     <>
       <style>{S}</style>
+      <ServiceContext.Provider value={defaultServices}>
       <div className="app">
         {!user ? (
           registering
@@ -2187,6 +2617,7 @@ export default function App(){
               </div>
             </nav>
 
+            {tab==="mygroups"&&<MyGroupsView user={user} token={token} showToast={showToast}/>}
             {tab==="lobby"&&(
               <TournamentLobby user={user} token={token} showToast={showToast}
                 onSelect={t=>{setActiveTournament(t);setTab("matches");}}/>
@@ -2215,6 +2646,7 @@ export default function App(){
         )}
         {toast&&<Toast key={tk} message={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
       </div>
+      </ServiceContext.Provider>
     </>
   );
 }
