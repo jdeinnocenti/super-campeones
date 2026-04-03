@@ -2,6 +2,152 @@ import { useState, useEffect, useCallback, createContext, useContext } from "rea
 import "./styles.css";
 
 // ============================================================
+// SEED DATA & CONSTANTS
+// ============================================================
+const AVATARS = ["⚽","🌟","🎯","🏅","🔥","⚡","🦁","🐯","🦊","🐺","🎪","🎭","🎨","🎸","🚀","💎","🌈","🦅","🐉","🏆"];
+
+const SEED_USERS = [
+  {id:"u1",username:"admin",  passwordHash:"demo_hash",role:"admin", avatar:"🏆",active:true,createdAt:"2024-01-01"},
+  {id:"u2",username:"diego10",passwordHash:"demo_hash",role:"user",  avatar:"⚽",active:true,createdAt:"2024-01-01"},
+  {id:"u3",username:"leo30",  passwordHash:"demo_hash",role:"user",  avatar:"🌟",active:true,createdAt:"2024-01-01"},
+  {id:"u4",username:"cr7fan", passwordHash:"demo_hash",role:"user",  avatar:"🎯",active:true,createdAt:"2024-01-01"},
+];
+
+const SEED_TOURNAMENTS = [
+  {id:"t1",name:"FIFA World Cup 2026",shortName:"World Cup 2026",
+   region:"Global — Canadá, México y USA",status:"upcoming",logo:"🌍",
+   startDate:"2026-06-11",endDate:"2026-07-19",
+   groups:["A","B","C","D","E","F","G","H","I","J","K","L","R32","R16","QF","SF","3P","FIN"],
+   source:"manual"},
+];
+
+// 104 partidos: 72 de grupos (12 grupos × 6) + 32 eliminatorios
+const SEED_MATCHES_T1 = [
+  // GRUPO A
+  {id:"gA1",tId:"t1",group:"A",homeTeam:"México 🇲🇽",awayTeam:"Sudáfrica 🇿🇦",date:"2026-06-11",time:"15:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gA2",tId:"t1",group:"A",homeTeam:"Corea del Sur 🇰🇷",awayTeam:"TBD:Play-off UEFA D",date:"2026-06-11",time:"22:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gA3",tId:"t1",group:"A",homeTeam:"TBD:Play-off UEFA D",awayTeam:"Sudáfrica 🇿🇦",date:"2026-06-18",time:"18:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gA4",tId:"t1",group:"A",homeTeam:"México 🇲🇽",awayTeam:"Corea del Sur 🇰🇷",date:"2026-06-18",time:"23:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gA5",tId:"t1",group:"A",homeTeam:"TBD:Play-off UEFA D",awayTeam:"México 🇲🇽",date:"2026-06-24",time:"21:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gA6",tId:"t1",group:"A",homeTeam:"Sudáfrica 🇿🇦",awayTeam:"Corea del Sur 🇰🇷",date:"2026-06-24",time:"21:00",stage:"Grupo A",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO B
+  {id:"gB1",tId:"t1",group:"B",homeTeam:"Canadá 🇨🇦",awayTeam:"TBD:Play-off UEFA A",date:"2026-06-12",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gB2",tId:"t1",group:"B",homeTeam:"Qatar 🇶🇦",awayTeam:"Suiza 🇨🇭",date:"2026-06-13",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gB3",tId:"t1",group:"B",homeTeam:"Suiza 🇨🇭",awayTeam:"TBD:Play-off UEFA A",date:"2026-06-18",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gB4",tId:"t1",group:"B",homeTeam:"Canadá 🇨🇦",awayTeam:"Qatar 🇶🇦",date:"2026-06-18",time:"18:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gB5",tId:"t1",group:"B",homeTeam:"Suiza 🇨🇭",awayTeam:"Canadá 🇨🇦",date:"2026-06-24",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gB6",tId:"t1",group:"B",homeTeam:"TBD:Play-off UEFA A",awayTeam:"Qatar 🇶🇦",date:"2026-06-24",time:"21:00",stage:"Grupo B",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO C
+  {id:"gC1",tId:"t1",group:"C",homeTeam:"Brasil 🇧🇷",awayTeam:"Marruecos 🇲🇦",date:"2026-06-13",time:"00:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gC2",tId:"t1",group:"C",homeTeam:"Haití 🇭🇹",awayTeam:"Escocia 🏴󠁧󠁢󠁳󠁣󠁴󠁿",date:"2026-06-14",time:"03:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gC3",tId:"t1",group:"C",homeTeam:"Escocia 🏴󠁧󠁢󠁳󠁣󠁴󠁿",awayTeam:"Marruecos 🇲🇦",date:"2026-06-19",time:"00:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gC4",tId:"t1",group:"C",homeTeam:"Brasil 🇧🇷",awayTeam:"Haití 🇭🇹",date:"2026-06-20",time:"03:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gC5",tId:"t1",group:"C",homeTeam:"Escocia 🏴󠁧󠁢󠁳󠁣󠁴󠁿",awayTeam:"Brasil 🇧🇷",date:"2026-06-24",time:"00:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gC6",tId:"t1",group:"C",homeTeam:"Marruecos 🇲🇦",awayTeam:"Haití 🇭🇹",date:"2026-06-24",time:"00:00",stage:"Grupo C",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO D
+  {id:"gD1",tId:"t1",group:"D",homeTeam:"Estados Unidos 🇺🇸",awayTeam:"Paraguay 🇵🇾",date:"2026-06-12",time:"03:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gD2",tId:"t1",group:"D",homeTeam:"Australia 🇦🇺",awayTeam:"TBD:Play-off UEFA C",date:"2026-06-14",time:"03:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gD3",tId:"t1",group:"D",homeTeam:"Estados Unidos 🇺🇸",awayTeam:"Australia 🇦🇺",date:"2026-06-19",time:"21:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gD4",tId:"t1",group:"D",homeTeam:"TBD:Play-off UEFA C",awayTeam:"Paraguay 🇵🇾",date:"2026-06-20",time:"03:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gD5",tId:"t1",group:"D",homeTeam:"TBD:Play-off UEFA C",awayTeam:"Estados Unidos 🇺🇸",date:"2026-06-25",time:"02:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gD6",tId:"t1",group:"D",homeTeam:"Paraguay 🇵🇾",awayTeam:"Australia 🇦🇺",date:"2026-06-25",time:"02:00",stage:"Grupo D",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO E
+  {id:"gE1",tId:"t1",group:"E",homeTeam:"Alemania 🇩🇪",awayTeam:"Curazao 🇨🇼",date:"2026-06-14",time:"19:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gE2",tId:"t1",group:"E",homeTeam:"Costa de Marfil 🇨🇮",awayTeam:"Ecuador 🇪🇨",date:"2026-06-15",time:"01:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gE3",tId:"t1",group:"E",homeTeam:"Alemania 🇩🇪",awayTeam:"Costa de Marfil 🇨🇮",date:"2026-06-20",time:"20:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gE4",tId:"t1",group:"E",homeTeam:"Ecuador 🇪🇨",awayTeam:"Curazao 🇨🇼",date:"2026-06-21",time:"02:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gE5",tId:"t1",group:"E",homeTeam:"Ecuador 🇪🇨",awayTeam:"Alemania 🇩🇪",date:"2026-06-25",time:"20:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gE6",tId:"t1",group:"E",homeTeam:"Curazao 🇨🇼",awayTeam:"Costa de Marfil 🇨🇮",date:"2026-06-25",time:"20:00",stage:"Grupo E",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO F
+  {id:"gF1",tId:"t1",group:"F",homeTeam:"Países Bajos 🇳🇱",awayTeam:"Japón 🇯🇵",date:"2026-06-14",time:"22:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gF2",tId:"t1",group:"F",homeTeam:"TBD:Play-off UEFA B",awayTeam:"Túnez 🇹🇳",date:"2026-06-15",time:"04:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gF3",tId:"t1",group:"F",homeTeam:"Países Bajos 🇳🇱",awayTeam:"TBD:Play-off UEFA B",date:"2026-06-20",time:"19:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gF4",tId:"t1",group:"F",homeTeam:"Túnez 🇹🇳",awayTeam:"Japón 🇯🇵",date:"2026-06-21",time:"04:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gF5",tId:"t1",group:"F",homeTeam:"Japón 🇯🇵",awayTeam:"TBD:Play-off UEFA B",date:"2026-06-25",time:"19:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gF6",tId:"t1",group:"F",homeTeam:"Túnez 🇹🇳",awayTeam:"Países Bajos 🇳🇱",date:"2026-06-25",time:"19:00",stage:"Grupo F",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO G
+  {id:"gG1",tId:"t1",group:"G",homeTeam:"Bélgica 🇧🇪",awayTeam:"Egipto 🇪🇬",date:"2026-06-15",time:"22:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gG2",tId:"t1",group:"G",homeTeam:"Irán 🇮🇷",awayTeam:"Nueva Zelanda 🇳🇿",date:"2026-06-16",time:"04:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gG3",tId:"t1",group:"G",homeTeam:"Bélgica 🇧🇪",awayTeam:"Irán 🇮🇷",date:"2026-06-21",time:"21:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gG4",tId:"t1",group:"G",homeTeam:"Nueva Zelanda 🇳🇿",awayTeam:"Egipto 🇪🇬",date:"2026-06-22",time:"03:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gG5",tId:"t1",group:"G",homeTeam:"Egipto 🇪🇬",awayTeam:"Irán 🇮🇷",date:"2026-06-26",time:"23:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gG6",tId:"t1",group:"G",homeTeam:"Nueva Zelanda 🇳🇿",awayTeam:"Bélgica 🇧🇪",date:"2026-06-26",time:"23:00",stage:"Grupo G",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO H
+  {id:"gH1",tId:"t1",group:"H",homeTeam:"España 🇪🇸",awayTeam:"Cabo Verde 🇨🇻",date:"2026-06-15",time:"19:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gH2",tId:"t1",group:"H",homeTeam:"Arabia Saudita 🇸🇦",awayTeam:"Uruguay 🇺🇾",date:"2026-06-16",time:"00:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gH3",tId:"t1",group:"H",homeTeam:"España 🇪🇸",awayTeam:"Arabia Saudita 🇸🇦",date:"2026-06-21",time:"18:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gH4",tId:"t1",group:"H",homeTeam:"Uruguay 🇺🇾",awayTeam:"Cabo Verde 🇨🇻",date:"2026-06-22",time:"00:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gH5",tId:"t1",group:"H",homeTeam:"Cabo Verde 🇨🇻",awayTeam:"Arabia Saudita 🇸🇦",date:"2026-06-27",time:"02:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gH6",tId:"t1",group:"H",homeTeam:"Uruguay 🇺🇾",awayTeam:"España 🇪🇸",date:"2026-06-27",time:"02:00",stage:"Grupo H",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO I
+  {id:"gI1",tId:"t1",group:"I",homeTeam:"Francia 🇫🇷",awayTeam:"Senegal 🇸🇳",date:"2026-06-16",time:"21:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gI2",tId:"t1",group:"I",homeTeam:"TBD:Play-off Intercontinental 2",awayTeam:"Noruega 🇳🇴",date:"2026-06-17",time:"00:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gI3",tId:"t1",group:"I",homeTeam:"Francia 🇫🇷",awayTeam:"TBD:Play-off Intercontinental 2",date:"2026-06-22",time:"23:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gI4",tId:"t1",group:"I",homeTeam:"Noruega 🇳🇴",awayTeam:"Senegal 🇸🇳",date:"2026-06-23",time:"02:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gI5",tId:"t1",group:"I",homeTeam:"Noruega 🇳🇴",awayTeam:"Francia 🇫🇷",date:"2026-06-26",time:"19:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gI6",tId:"t1",group:"I",homeTeam:"Senegal 🇸🇳",awayTeam:"TBD:Play-off Intercontinental 2",date:"2026-06-27",time:"19:00",stage:"Grupo I",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO J
+  {id:"gJ1",tId:"t1",group:"J",homeTeam:"Argentina 🇦🇷",awayTeam:"Argelia 🇩🇿",date:"2026-06-17",time:"03:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gJ2",tId:"t1",group:"J",homeTeam:"Austria 🇦🇹",awayTeam:"Jordania 🇯🇴",date:"2026-06-17",time:"04:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gJ3",tId:"t1",group:"J",homeTeam:"Argentina 🇦🇷",awayTeam:"Austria 🇦🇹",date:"2026-06-22",time:"19:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gJ4",tId:"t1",group:"J",homeTeam:"Jordania 🇯🇴",awayTeam:"Argelia 🇩🇿",date:"2026-06-23",time:"03:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gJ5",tId:"t1",group:"J",homeTeam:"Argelia 🇩🇿",awayTeam:"Austria 🇦🇹",date:"2026-06-28",time:"02:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gJ6",tId:"t1",group:"J",homeTeam:"Jordania 🇯🇴",awayTeam:"Argentina 🇦🇷",date:"2026-06-28",time:"02:00",stage:"Grupo J",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO K
+  {id:"gK1",tId:"t1",group:"K",homeTeam:"Portugal 🇵🇹",awayTeam:"TBD:Play-off Intercontinental 1",date:"2026-06-17",time:"19:00",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gK2",tId:"t1",group:"K",homeTeam:"Uzbekistán 🇺🇿",awayTeam:"Colombia 🇨🇴",date:"2026-06-18",time:"04:00",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gK3",tId:"t1",group:"K",homeTeam:"Portugal 🇵🇹",awayTeam:"Uzbekistán 🇺🇿",date:"2026-06-23",time:"19:00",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gK4",tId:"t1",group:"K",homeTeam:"Colombia 🇨🇴",awayTeam:"TBD:Play-off Intercontinental 1",date:"2026-06-24",time:"04:00",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gK5",tId:"t1",group:"K",homeTeam:"Colombia 🇨🇴",awayTeam:"Portugal 🇵🇹",date:"2026-06-28",time:"01:30",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gK6",tId:"t1",group:"K",homeTeam:"TBD:Play-off Intercontinental 1",awayTeam:"Uzbekistán 🇺🇿",date:"2026-06-28",time:"01:30",stage:"Grupo K",homeScore:null,awayScore:null,status:"upcoming"},
+  // GRUPO L
+  {id:"gL1",tId:"t1",group:"L",homeTeam:"Inglaterra 🏴󠁧󠁢󠁥󠁮󠁧󠁿",awayTeam:"Croacia 🇭🇷",date:"2026-06-17",time:"22:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gL2",tId:"t1",group:"L",homeTeam:"Ghana 🇬🇭",awayTeam:"Panamá 🇵🇦",date:"2026-06-18",time:"01:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gL3",tId:"t1",group:"L",homeTeam:"Inglaterra 🏴󠁧󠁢󠁥󠁮󠁧󠁿",awayTeam:"Ghana 🇬🇭",date:"2026-06-23",time:"22:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gL4",tId:"t1",group:"L",homeTeam:"Panamá 🇵🇦",awayTeam:"Croacia 🇭🇷",date:"2026-06-24",time:"01:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gL5",tId:"t1",group:"L",homeTeam:"Panamá 🇵🇦",awayTeam:"Inglaterra 🏴󠁧󠁢󠁥󠁮󠁧󠁿",date:"2026-06-27",time:"23:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"gL6",tId:"t1",group:"L",homeTeam:"Croacia 🇭🇷",awayTeam:"Ghana 🇬🇭",date:"2026-06-27",time:"23:00",stage:"Grupo L",homeScore:null,awayScore:null,status:"upcoming"},
+  // RONDA DE 32
+  {id:"r32_1",tId:"t1",group:"R32",homeTeam:"TBD:2° Grupo A",awayTeam:"TBD:2° Grupo B",date:"2026-06-28",time:"21:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_2",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo C",awayTeam:"TBD:2° Grupo F",date:"2026-06-29",time:"19:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_3",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo E",awayTeam:"TBD:Mejor 3° A/B/C/D/F",date:"2026-06-29",time:"22:30",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_4",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo F",awayTeam:"TBD:2° Grupo C",date:"2026-06-30",time:"03:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_5",tId:"t1",group:"R32",homeTeam:"TBD:2° Grupo E",awayTeam:"TBD:2° Grupo I",date:"2026-06-30",time:"19:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_6",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo I",awayTeam:"TBD:Mejor 3° C/D/F/G/H",date:"2026-07-01",time:"01:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_7",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo A",awayTeam:"TBD:Mejor 3° C/E/F/H/I",date:"2026-07-01",time:"03:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_8",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo L",awayTeam:"TBD:Mejor 3° E/H/I/J/K",date:"2026-07-01",time:"18:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_9",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo G",awayTeam:"TBD:Mejor 3° A/E/H/I/J",date:"2026-07-02",time:"20:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_10",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo D",awayTeam:"TBD:Mejor 3° B/E/F/I/J",date:"2026-07-02",time:"02:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_11",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo H",awayTeam:"TBD:2° Grupo J",date:"2026-07-02",time:"21:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_12",tId:"t1",group:"R32",homeTeam:"TBD:2° Grupo K",awayTeam:"TBD:2° Grupo L",date:"2026-07-03",time:"01:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_13",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo B",awayTeam:"TBD:Mejor 3° E/F/G/I/J",date:"2026-07-03",time:"03:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_14",tId:"t1",group:"R32",homeTeam:"TBD:2° Grupo D",awayTeam:"TBD:2° Grupo G",date:"2026-07-03",time:"20:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_15",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo J",awayTeam:"TBD:2° Grupo H",date:"2026-07-04",time:"00:00",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r32_16",tId:"t1",group:"R32",homeTeam:"TBD:1° Grupo K",awayTeam:"TBD:Mejor 3° D/E/I/J/L",date:"2026-07-04",time:"01:30",stage:"Ronda de 32",homeScore:null,awayScore:null,status:"upcoming"},
+  // OCTAVOS DE FINAL
+  {id:"r16_1",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-1",awayTeam:"TBD:Gan. R32-2",date:"2026-07-04",time:"19:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r16_2",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-3",awayTeam:"TBD:Gan. R32-4",date:"2026-07-05",time:"01:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r16_3",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-5",awayTeam:"TBD:Gan. R32-6",date:"2026-07-05",time:"22:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r16_4",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-7",awayTeam:"TBD:Gan. R32-8",date:"2026-07-06",time:"02:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r16_5",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-9",awayTeam:"TBD:Gan. R32-10",date:"2026-07-06",time:"21:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r16_6",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-11",awayTeam:"TBD:Gan. R32-12",date:"2026-07-07",time:"03:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r16_7",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-13",awayTeam:"TBD:Gan. R32-14",date:"2026-07-07",time:"18:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"r16_8",tId:"t1",group:"R16",homeTeam:"TBD:Gan. R32-15",awayTeam:"TBD:Gan. R32-16",date:"2026-07-08",time:"22:00",stage:"Octavos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  // CUARTOS DE FINAL
+  {id:"qf1",tId:"t1",group:"QF",homeTeam:"TBD:Gan. Oct-1",awayTeam:"TBD:Gan. Oct-2",date:"2026-07-09",time:"22:00",stage:"Cuartos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"qf2",tId:"t1",group:"QF",homeTeam:"TBD:Gan. Oct-3",awayTeam:"TBD:Gan. Oct-4",date:"2026-07-10",time:"21:00",stage:"Cuartos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"qf3",tId:"t1",group:"QF",homeTeam:"TBD:Gan. Oct-5",awayTeam:"TBD:Gan. Oct-6",date:"2026-07-11",time:"23:00",stage:"Cuartos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"qf4",tId:"t1",group:"QF",homeTeam:"TBD:Gan. Oct-7",awayTeam:"TBD:Gan. Oct-8",date:"2026-07-12",time:"03:00",stage:"Cuartos de final",homeScore:null,awayScore:null,status:"upcoming"},
+  // SEMIFINALES
+  {id:"sf1",tId:"t1",group:"SF",homeTeam:"TBD:Gan. CF-1",awayTeam:"TBD:Gan. CF-2",date:"2026-07-14",time:"21:00",stage:"Semifinal",homeScore:null,awayScore:null,status:"upcoming"},
+  {id:"sf2",tId:"t1",group:"SF",homeTeam:"TBD:Gan. CF-3",awayTeam:"TBD:Gan. CF-4",date:"2026-07-15",time:"23:00",stage:"Semifinal",homeScore:null,awayScore:null,status:"upcoming"},
+  // TERCER PUESTO
+  {id:"tp1",tId:"t1",group:"3P",homeTeam:"TBD:Per. SF-1",awayTeam:"TBD:Per. SF-2",date:"2026-07-18",time:"23:00",stage:"Tercer puesto",homeScore:null,awayScore:null,status:"upcoming"},
+  // FINAL
+  {id:"fin",tId:"t1",group:"FIN",homeTeam:"TBD:Gan. SF-1",awayTeam:"TBD:Gan. SF-2",date:"2026-07-19",time:"21:00",stage:"Final",homeScore:null,awayScore:null,status:"upcoming"},
+];
+
+// ============================================================
 // CAPA SOLID — Super Campeones
 // Cada sección implementa un principio específico.
 // Este archivo se inserta reemplazando Security + Store + API
@@ -440,6 +586,37 @@ const MatchService = {
     await MatchRepository.save(tId, [...matches, match]);
     await AuditRepository.log("admin", "ADD_MATCH", { tId, matchId: match.id });
     return { success: true, match };
+  },
+  // Edita campos de un partido: equipos, fecha, hora, estado.
+  // Si un equipo era "TBD:xxx" y se reemplaza con un nombre real,
+  // propaga ese nombre a los partidos futuros que lo referenciaban.
+  updateMatch: async (tId, matchId, fields, token) => {
+    if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
+    const matches = await MatchRepository.getAll(tId);
+    const idx = matches.findIndex(m => m.id === matchId);
+    if (idx < 0) return { error: "Partido no encontrado" };
+
+    const allowed = ["homeTeam","awayTeam","date","time","stage","group","status"];
+    const prev = matches[idx];
+    for (const k of allowed) {
+      if (fields[k] !== undefined) matches[idx][k] = Sanitizer.clean(String(fields[k]));
+    }
+    // Propagar nombres: si un equipo era TBD y ahora tiene nombre real,
+    // actualizar todas las referencias en partidos futuros.
+    for (const side of ["homeTeam","awayTeam"]) {
+      const oldName = prev[side];
+      const newName = matches[idx][side];
+      if (oldName !== newName && oldName?.startsWith("TBD:")) {
+        for (const m of matches) {
+          if (m.id === matchId) continue;
+          if (m.homeTeam === oldName) m.homeTeam = newName;
+          if (m.awayTeam === oldName) m.awayTeam = newName;
+        }
+      }
+    }
+    await MatchRepository.save(tId, matches);
+    await AuditRepository.log("admin", "UPDATE_MATCH_FIELDS", { tId, matchId, fields: Object.keys(fields) });
+    return { success: true, match: matches[idx] };
   },
   setResult: async (tId, matchId, homeScore, awayScore, token) => {
     if (!await AuthService.requireAdmin(token)) return { error: "Acceso denegado (A01)" };
@@ -1023,7 +1200,8 @@ function GroupDetail({ group, user, token, showToast, onBack }) {
                 {filteredM.map(m=>(
                   <MatchCard key={m.id} match={m} tId={group.tournamentId} userId={user.id} token={token} isAdmin={false}
                     onSave={async(mid,h,a)=>{const r=await predSvc.save(user.id,group.tournamentId,mid,h,a);if(r.success){showToast("Pronóstico guardado");await load();}else showToast(r.error,"err");return r;}}
-                    onAdminSave={()=>{}}/>
+                    onAdminSave={()=>{}}
+                    showToast={showToast}/>
                 ))}
               </div>
             </div>
@@ -1962,9 +2140,152 @@ function TournamentLobby({user,token,onSelect,showToast}){
 }
 
 // ============================================================
+// EDIT MATCH MODAL
+// ============================================================
+function EditMatchModal({ match, tId, token, onClose, onSaved, showToast }) {
+  const { matches: matchSvc } = useServices();
+  const isTBD = v => v?.startsWith("TBD:");
+  const stripTBD = v => isTBD(v) ? v.slice(4) : v;
+
+  const [form, setForm] = useState({
+    homeTeam: match.homeTeam || "",
+    awayTeam: match.awayTeam || "",
+    date:     match.date     || "",
+    time:     match.time     || "",
+    stage:    match.stage    || "",
+    status:   match.status   || "upcoming",
+  });
+  const [saving, setSaving] = useState(false);
+  const [err,    setErr]    = useState("");
+
+  const upd = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  // Helpers for TBD teams
+  const setTBD = side => setForm(f => ({ ...f, [side]: "TBD:" + stripTBD(f[side]) }));
+  const clearTBD = side => setForm(f => ({ ...f, [side]: stripTBD(f[side]) }));
+  const isTeamTBD = side => isTBD(form[side]);
+
+  const handleSave = async () => {
+    setErr(""); setSaving(true);
+    const r = await matchSvc.updateMatch(tId, match.id, form, token);
+    setSaving(false);
+    if (r.error) { setErr(r.error); return; }
+    showToast("Partido actualizado");
+    onSaved(r.match);
+    onClose();
+  };
+
+  return (
+    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 500 }}>
+        <div className="modal-hdr">
+          <div className="modal-title" style={{ color: "#ff8888" }}>✏️ EDITAR PARTIDO</div>
+          <button className="btn btn-ghost" style={{ padding: "3px 9px", fontSize: 15 }} onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {err && <div className="msg-err">{err}</div>}
+
+          {/* Equipos */}
+          <div className="edit-match-grid">
+            {/* Local */}
+            <div className="field">
+              <label>
+                Equipo local
+                {isTeamTBD("homeTeam") && <span style={{ marginLeft: 6, fontSize: 9, color: "var(--gold)", fontFamily: "Barlow Condensed", letterSpacing: 1 }}>TBD</span>}
+              </label>
+              <div className="team-input-wrap">
+                <input
+                  value={isTeamTBD("homeTeam") ? stripTBD(form.homeTeam) : form.homeTeam}
+                  onChange={e => setForm(f => ({
+                    ...f,
+                    homeTeam: isTBD(f.homeTeam) ? "TBD:" + e.target.value : e.target.value
+                  }))}
+                  placeholder="ej: Argentina 🇦🇷"
+                />
+                {!isTeamTBD("homeTeam") && form.homeTeam && (
+                  <button className="team-clear-btn" onClick={() => setForm(f => ({ ...f, homeTeam: "" }))} title="Limpiar">✕</button>
+                )}
+              </div>
+              <div style={{ marginTop: 4, display: "flex", gap: 6 }}>
+                {isTeamTBD("homeTeam")
+                  ? <button className="tbd-restore-btn" onClick={() => clearTBD("homeTeam")}>✓ Confirmar como equipo real</button>
+                  : <button className="tbd-restore-btn" onClick={() => setTBD("homeTeam")}>↩ Marcar como TBD</button>
+                }
+              </div>
+            </div>
+            {/* Visitante */}
+            <div className="field">
+              <label>
+                Equipo visitante
+                {isTeamTBD("awayTeam") && <span style={{ marginLeft: 6, fontSize: 9, color: "var(--gold)", fontFamily: "Barlow Condensed", letterSpacing: 1 }}>TBD</span>}
+              </label>
+              <div className="team-input-wrap">
+                <input
+                  value={isTeamTBD("awayTeam") ? stripTBD(form.awayTeam) : form.awayTeam}
+                  onChange={e => setForm(f => ({
+                    ...f,
+                    awayTeam: isTBD(f.awayTeam) ? "TBD:" + e.target.value : e.target.value
+                  }))}
+                  placeholder="ej: Francia 🇫🇷"
+                />
+                {!isTeamTBD("awayTeam") && form.awayTeam && (
+                  <button className="team-clear-btn" onClick={() => setForm(f => ({ ...f, awayTeam: "" }))} title="Limpiar">✕</button>
+                )}
+              </div>
+              <div style={{ marginTop: 4, display: "flex", gap: 6 }}>
+                {isTeamTBD("awayTeam")
+                  ? <button className="tbd-restore-btn" onClick={() => clearTBD("awayTeam")}>✓ Confirmar como equipo real</button>
+                  : <button className="tbd-restore-btn" onClick={() => setTBD("awayTeam")}>↩ Marcar como TBD</button>
+                }
+              </div>
+            </div>
+          </div>
+
+          {/* Info del partido */}
+          <div className="edit-match-grid">
+            <div className="field">
+              <label>Fecha</label>
+              <input type="date" value={form.date} onChange={upd("date")} />
+            </div>
+            <div className="field">
+              <label>Hora</label>
+              <input type="time" value={form.time} onChange={upd("time")} />
+            </div>
+            <div className="field full">
+              <label>Etapa</label>
+              <input value={form.stage} onChange={upd("stage")} placeholder="ej: Cuartos de final" />
+            </div>
+            <div className="field full">
+              <label>Estado</label>
+              <select value={form.status} onChange={upd("status")}>
+                <option value="upcoming">🟡 Pendiente</option>
+                <option value="active">🟢 En curso</option>
+                <option value="finished">⚫ Finalizado</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ fontSize: 11, color: "var(--tx3)", lineHeight: 1.6, padding: "8px 0 2px" }}>
+            <strong style={{ color: "var(--tx2)" }}>ℹ️ Sobre equipos TBD:</strong> Si el equipo era "TBD:descripción"
+            y lo reemplazás con un nombre real, el cambio se propaga automáticamente
+            a todos los partidos futuros que lo esperaban.
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn btn-red" onClick={handleSave} disabled={saving}>
+            {saving ? "GUARDANDO..." : "GUARDAR CAMBIOS"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // MATCH CARD
 // ============================================================
-function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
+function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave,onMatchEdited,showToast:showToastFn}){
   const [h,setH]=useState(match.myPrediction?.homeScore?.toString()??"");
   const [a,setA]=useState(match.myPrediction?.awayScore?.toString()??"");
   const [saved,setSaved]=useState(!!match.myPrediction);
@@ -1972,24 +2293,38 @@ function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
   const [ah,setAH]=useState(match.homeScore?.toString()??"");
   const [aa,setAA]=useState(match.awayScore?.toString()??"");
   const [as2,setAS]=useState(false);
+  const [showEdit,setShowEdit]=useState(false);
   const pts=match.myPrediction?.points;
+
+  const isTBD = v => v?.startsWith("TBD:");
+  const displayTeam = v => isTBD(v) ? "❓ "+v.slice(4) : v;
+
   return(
     <div className="match-card">
       <div className="match-hdr">
         <span>{match.stage} — {match.date} {match.time}</span>
-        <span className={"status-badge "+statusClass(match.status)}>{match.status==="finished"?"Finalizado":match.status==="active"?"En curso":"Pendiente"}</span>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span className={"status-badge "+statusClass(match.status)}>
+            {match.status==="finished"?"Finalizado":match.status==="active"?"En curso":"Pendiente"}
+          </span>
+          {isAdmin&&(
+            <button className="edit-match-btn" title="Editar partido" onClick={()=>setShowEdit(true)}>✏️</button>
+          )}
+        </div>
       </div>
 
-      {/* ── DESKTOP: Local | Centro | Visitante en una fila ───── */}
       <div className="match-body match-body-desktop">
-        <div className={"team home"+(match.homeTeam?.startsWith("TBD:")?" tbd":"")}>
-          {match.homeTeam?.startsWith("TBD:") ? "❓ "+match.homeTeam.slice(4) : match.homeTeam}
+        <div className={"team home"+(isTBD(match.homeTeam)?" tbd":"")}>
+          {displayTeam(match.homeTeam)}
         </div>
         <div className="match-center">
           {match.status==="finished"?(
             <div className="score-fin"><span>{match.homeScore}</span><span className="score-sep">–</span><span>{match.awayScore}</span></div>
-          ):match.homeTeam?.startsWith("TBD:")||match.awayTeam?.startsWith("TBD:")?(
-            <div className="tbd-match-note">Equipos por definirse</div>
+          ):isTBD(match.homeTeam)||isTBD(match.awayTeam)?(
+            <div className="tbd-match-note">
+              Equipos por definirse
+              {isAdmin&&<span style={{display:"block",fontSize:9,color:"rgba(255,100,100,.6)",marginTop:2}}>✏️ Editá el partido para asignar equipos</span>}
+            </div>
           ):(
             <div className="score-row">
               <input className="sinput" type="number" min="0" max="30" value={h} onChange={e=>{setH(e.target.value);setSaved(false)}}/>
@@ -2004,13 +2339,12 @@ function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
             </div>
           )}
         </div>
-        <div className={"team away"+(match.awayTeam?.startsWith("TBD:")?" tbd":"")}>
-          {match.awayTeam?.startsWith("TBD:") ? "❓ "+match.awayTeam.slice(4) : match.awayTeam}
+        <div className={"team away"+(isTBD(match.awayTeam)?" tbd":"")}>
+          {displayTeam(match.awayTeam)}
         </div>
       </div>
 
-      {/* Botón GUARDAR — fila propia debajo del marcador */}
-      {match.status!=="finished"&&!match.homeTeam?.startsWith("TBD:")&&!match.awayTeam?.startsWith("TBD:")&&(
+      {match.status!=="finished"&&!isTBD(match.homeTeam)&&!isTBD(match.awayTeam)&&(
         <div className="save-row">
           <button className={"pred-btn"+(saved?" saved":"")} disabled={saving}
             onClick={async()=>{if(h===""||a==="")return;setSaving(true);const r=await onSave(match.id,h,a);setSaving(false);if(r?.success)setSaved(true);}}>
@@ -2019,7 +2353,7 @@ function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
         </div>
       )}
 
-      {isAdmin&&match.status!=="finished"&&(
+      {isAdmin&&match.status!=="finished"&&!isTBD(match.homeTeam)&&!isTBD(match.awayTeam)&&(
         <div className="admin-footer">
           <span style={{fontSize:9,letterSpacing:2,color:"#ff8888",fontFamily:"Barlow Condensed",textTransform:"uppercase"}}>Admin resultado:</span>
           <input className="ainput" type="number" min="0" max="30" value={ah} onChange={e=>setAH(e.target.value)}/>
@@ -2029,6 +2363,15 @@ function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave}){
             {as2?"...":"GUARDAR"}
           </button>
         </div>
+      )}
+
+      {showEdit&&(
+        <EditMatchModal
+          match={match} tId={tId} token={token}
+          onClose={()=>setShowEdit(false)}
+          onSaved={updated=>{ onMatchEdited&&onMatchEdited(updated); setShowEdit(false); }}
+          showToast={showToastFn}
+        />
       )}
     </div>
   );
@@ -2200,7 +2543,9 @@ function MatchesView({tournament,user,token,showToast,onPointsUpdate}){
           ):filtered.map(m=>(
             <MatchCard key={m.id} match={m} tId={tournament.id} userId={user.id} token={token} isAdmin={isAdmin}
               onSave={async(mid,h,a)=>{const r=await predSvc.save(user.id,tournament.id,mid,h,a);if(r.success){showToast("Pronóstico guardado");await load();}else showToast(r.error,"err");return r;}}
-              onAdminSave={async(mid,h,a)=>{const r=await matchSvc.setResult(tournament.id,mid,h,a,token);if(r.success){showToast("Resultado guardado");await load();onPointsUpdate&&onPointsUpdate();}else showToast(r.error,"err");}}/>
+              onAdminSave={async(mid,h,a)=>{const r=await matchSvc.setResult(tournament.id,mid,h,a,token);if(r.success){showToast("Resultado guardado");await load();onPointsUpdate&&onPointsUpdate();}else showToast(r.error,"err");}}
+              onMatchEdited={()=>{showToast("Partido actualizado");load();}}
+              showToast={showToast}/>
           ))}
         </div>
       </div>
