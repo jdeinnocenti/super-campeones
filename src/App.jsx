@@ -1,10 +1,248 @@
-import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useEffect, useCallback, createContext, useContext, useRef } from "react";
 import "./styles.css";
 
 // ============================================================
 // SEED DATA & CONSTANTS
 // ============================================================
 const AVATARS = ["⚽","🌟","🎯","🏅","🔥","⚡","🦁","🐯","🦊","🐺","🎪","🎭","🎨","🎸","🚀","💎","🌈","🦅","🐉","🏆"];
+
+// ============================================================
+// FIFA MEMBER ASSOCIATIONS — 211 países con bandera emoji
+// Ordenados por nombre en español para facilitar búsqueda
+// ============================================================
+const FIFA_COUNTRIES = [
+  // CONMEBOL
+  {name:"Argentina",flag:"🇦🇷",conf:"CONMEBOL"},
+  {name:"Bolivia",flag:"🇧🇴",conf:"CONMEBOL"},
+  {name:"Brasil",flag:"🇧🇷",conf:"CONMEBOL"},
+  {name:"Chile",flag:"🇨🇱",conf:"CONMEBOL"},
+  {name:"Colombia",flag:"🇨🇴",conf:"CONMEBOL"},
+  {name:"Ecuador",flag:"🇪🇨",conf:"CONMEBOL"},
+  {name:"Paraguay",flag:"🇵🇾",conf:"CONMEBOL"},
+  {name:"Perú",flag:"🇵🇪",conf:"CONMEBOL"},
+  {name:"Uruguay",flag:"🇺🇾",conf:"CONMEBOL"},
+  {name:"Venezuela",flag:"🇻🇪",conf:"CONMEBOL"},
+  // UEFA
+  {name:"Albania",flag:"🇦🇱",conf:"UEFA"},
+  {name:"Alemania",flag:"🇩🇪",conf:"UEFA"},
+  {name:"Andorra",flag:"🇦🇩",conf:"UEFA"},
+  {name:"Armenia",flag:"🇦🇲",conf:"UEFA"},
+  {name:"Austria",flag:"🇦🇹",conf:"UEFA"},
+  {name:"Azerbaiyán",flag:"🇦🇿",conf:"UEFA"},
+  {name:"Bélgica",flag:"🇧🇪",conf:"UEFA"},
+  {name:"Bielorrusia",flag:"🇧🇾",conf:"UEFA"},
+  {name:"Bosnia y Herzegovina",flag:"🇧🇦",conf:"UEFA"},
+  {name:"Bulgaria",flag:"🇧🇬",conf:"UEFA"},
+  {name:"Chipre",flag:"🇨🇾",conf:"UEFA"},
+  {name:"Croacia",flag:"🇭🇷",conf:"UEFA"},
+  {name:"Dinamarca",flag:"🇩🇰",conf:"UEFA"},
+  {name:"Escocia",flag:"🏴󠁧󠁢󠁳󠁣󠁴󠁿",conf:"UEFA"},
+  {name:"Eslovaquia",flag:"🇸🇰",conf:"UEFA"},
+  {name:"Eslovenia",flag:"🇸🇮",conf:"UEFA"},
+  {name:"España",flag:"🇪🇸",conf:"UEFA"},
+  {name:"Estonia",flag:"🇪🇪",conf:"UEFA"},
+  {name:"Finlandia",flag:"🇫🇮",conf:"UEFA"},
+  {name:"Francia",flag:"🇫🇷",conf:"UEFA"},
+  {name:"Gales",flag:"🏴󠁧󠁢󠁷󠁬󠁳󠁿",conf:"UEFA"},
+  {name:"Georgia",flag:"🇬🇪",conf:"UEFA"},
+  {name:"Gibraltar",flag:"🇬🇮",conf:"UEFA"},
+  {name:"Grecia",flag:"🇬🇷",conf:"UEFA"},
+  {name:"Hungría",flag:"🇭🇺",conf:"UEFA"},
+  {name:"Inglaterra",flag:"🏴󠁧󠁢󠁥󠁮󠁧󠁿",conf:"UEFA"},
+  {name:"Irlanda",flag:"🇮🇪",conf:"UEFA"},
+  {name:"Irlanda del Norte",flag:"🇬🇧",conf:"UEFA"},
+  {name:"Islandia",flag:"🇮🇸",conf:"UEFA"},
+  {name:"Islas Feroe",flag:"🇫🇴",conf:"UEFA"},
+  {name:"Israel",flag:"🇮🇱",conf:"UEFA"},
+  {name:"Italia",flag:"🇮🇹",conf:"UEFA"},
+  {name:"Kazajistán",flag:"🇰🇿",conf:"UEFA"},
+  {name:"Kosovo",flag:"🇽🇰",conf:"UEFA"},
+  {name:"Letonia",flag:"🇱🇻",conf:"UEFA"},
+  {name:"Liechtenstein",flag:"🇱🇮",conf:"UEFA"},
+  {name:"Lituania",flag:"🇱🇹",conf:"UEFA"},
+  {name:"Luxemburgo",flag:"🇱🇺",conf:"UEFA"},
+  {name:"Malta",flag:"🇲🇹",conf:"UEFA"},
+  {name:"Moldavia",flag:"🇲🇩",conf:"UEFA"},
+  {name:"Montenegro",flag:"🇲🇪",conf:"UEFA"},
+  {name:"Noruega",flag:"🇳🇴",conf:"UEFA"},
+  {name:"Países Bajos",flag:"🇳🇱",conf:"UEFA"},
+  {name:"Polonia",flag:"🇵🇱",conf:"UEFA"},
+  {name:"Portugal",flag:"🇵🇹",conf:"UEFA"},
+  {name:"República Checa",flag:"🇨🇿",conf:"UEFA"},
+  {name:"Rumanía",flag:"🇷🇴",conf:"UEFA"},
+  {name:"San Marino",flag:"🇸🇲",conf:"UEFA"},
+  {name:"Serbia",flag:"🇷🇸",conf:"UEFA"},
+  {name:"Suecia",flag:"🇸🇪",conf:"UEFA"},
+  {name:"Suiza",flag:"🇨🇭",conf:"UEFA"},
+  {name:"Turquía",flag:"🇹🇷",conf:"UEFA"},
+  {name:"Ucrania",flag:"🇺🇦",conf:"UEFA"},
+  // CONCACAF
+  {name:"Anguila",flag:"🇦🇮",conf:"CONCACAF"},
+  {name:"Antigua y Barbuda",flag:"🇦🇬",conf:"CONCACAF"},
+  {name:"Aruba",flag:"🇦🇼",conf:"CONCACAF"},
+  {name:"Bahamas",flag:"🇧🇸",conf:"CONCACAF"},
+  {name:"Barbados",flag:"🇧🇧",conf:"CONCACAF"},
+  {name:"Belice",flag:"🇧🇿",conf:"CONCACAF"},
+  {name:"Bermudas",flag:"🇧🇲",conf:"CONCACAF"},
+  {name:"Canadá",flag:"🇨🇦",conf:"CONCACAF"},
+  {name:"Costa Rica",flag:"🇨🇷",conf:"CONCACAF"},
+  {name:"Cuba",flag:"🇨🇺",conf:"CONCACAF"},
+  {name:"Curazao",flag:"🇨🇼",conf:"CONCACAF"},
+  {name:"Dominica",flag:"🇩🇲",conf:"CONCACAF"},
+  {name:"El Salvador",flag:"🇸🇻",conf:"CONCACAF"},
+  {name:"Estados Unidos",flag:"🇺🇸",conf:"CONCACAF"},
+  {name:"Granada",flag:"🇬🇩",conf:"CONCACAF"},
+  {name:"Guatemala",flag:"🇬🇹",conf:"CONCACAF"},
+  {name:"Guyana",flag:"🇬🇾",conf:"CONCACAF"},
+  {name:"Guyana Francesa",flag:"🇬🇫",conf:"CONCACAF"},
+  {name:"Haití",flag:"🇭🇹",conf:"CONCACAF"},
+  {name:"Honduras",flag:"🇭🇳",conf:"CONCACAF"},
+  {name:"Islas Caimán",flag:"🇰🇾",conf:"CONCACAF"},
+  {name:"Islas Turcas y Caicos",flag:"🇹🇨",conf:"CONCACAF"},
+  {name:"Islas Vírgenes Británicas",flag:"🇻🇬",conf:"CONCACAF"},
+  {name:"Islas Vírgenes EE.UU.",flag:"🇻🇮",conf:"CONCACAF"},
+  {name:"Jamaica",flag:"🇯🇲",conf:"CONCACAF"},
+  {name:"México",flag:"🇲🇽",conf:"CONCACAF"},
+  {name:"Montserrat",flag:"🇲🇸",conf:"CONCACAF"},
+  {name:"Nicaragua",flag:"🇳🇮",conf:"CONCACAF"},
+  {name:"Panamá",flag:"🇵🇦",conf:"CONCACAF"},
+  {name:"Puerto Rico",flag:"🇵🇷",conf:"CONCACAF"},
+  {name:"República Dominicana",flag:"🇩🇴",conf:"CONCACAF"},
+  {name:"San Cristóbal y Nieves",flag:"🇰🇳",conf:"CONCACAF"},
+  {name:"San Vicente y las Granadinas",flag:"🇻🇨",conf:"CONCACAF"},
+  {name:"Santa Lucía",flag:"🇱🇨",conf:"CONCACAF"},
+  {name:"Sint Maarten",flag:"🇸🇽",conf:"CONCACAF"},
+  {name:"Surinam",flag:"🇸🇷",conf:"CONCACAF"},
+  {name:"Trinidad y Tobago",flag:"🇹🇹",conf:"CONCACAF"},
+  // CAF
+  {name:"Argelia",flag:"🇩🇿",conf:"CAF"},
+  {name:"Angola",flag:"🇦🇴",conf:"CAF"},
+  {name:"Benín",flag:"🇧🇯",conf:"CAF"},
+  {name:"Botsuana",flag:"🇧🇼",conf:"CAF"},
+  {name:"Burkina Faso",flag:"🇧🇫",conf:"CAF"},
+  {name:"Burundi",flag:"🇧🇮",conf:"CAF"},
+  {name:"Cabo Verde",flag:"🇨🇻",conf:"CAF"},
+  {name:"Camerún",flag:"🇨🇲",conf:"CAF"},
+  {name:"Chad",flag:"🇹🇩",conf:"CAF"},
+  {name:"Comoras",flag:"🇰🇲",conf:"CAF"},
+  {name:"Congo",flag:"🇨🇬",conf:"CAF"},
+  {name:"Costa de Marfil",flag:"🇨🇮",conf:"CAF"},
+  {name:"Egipto",flag:"🇪🇬",conf:"CAF"},
+  {name:"Eritrea",flag:"🇪🇷",conf:"CAF"},
+  {name:"Esuatini",flag:"🇸🇿",conf:"CAF"},
+  {name:"Etiopía",flag:"🇪🇹",conf:"CAF"},
+  {name:"Gabón",flag:"🇬🇦",conf:"CAF"},
+  {name:"Gambia",flag:"🇬🇲",conf:"CAF"},
+  {name:"Ghana",flag:"🇬🇭",conf:"CAF"},
+  {name:"Guinea",flag:"🇬🇳",conf:"CAF"},
+  {name:"Guinea Ecuatorial",flag:"🇬🇶",conf:"CAF"},
+  {name:"Guinea-Bisáu",flag:"🇬🇼",conf:"CAF"},
+  {name:"Kenia",flag:"🇰🇪",conf:"CAF"},
+  {name:"Lesoto",flag:"🇱🇸",conf:"CAF"},
+  {name:"Liberia",flag:"🇱🇷",conf:"CAF"},
+  {name:"Libia",flag:"🇱🇾",conf:"CAF"},
+  {name:"Madagascar",flag:"🇲🇬",conf:"CAF"},
+  {name:"Malí",flag:"🇲🇱",conf:"CAF"},
+  {name:"Malaui",flag:"🇲🇼",conf:"CAF"},
+  {name:"Marruecos",flag:"🇲🇦",conf:"CAF"},
+  {name:"Mauricio",flag:"🇲🇺",conf:"CAF"},
+  {name:"Mauritania",flag:"🇲🇷",conf:"CAF"},
+  {name:"Mozambique",flag:"🇲🇿",conf:"CAF"},
+  {name:"Namibia",flag:"🇳🇦",conf:"CAF"},
+  {name:"Níger",flag:"🇳🇪",conf:"CAF"},
+  {name:"Nigeria",flag:"🇳🇬",conf:"CAF"},
+  {name:"República Centroafricana",flag:"🇨🇫",conf:"CAF"},
+  {name:"República Democrática del Congo",flag:"🇨🇩",conf:"CAF"},
+  {name:"Ruanda",flag:"🇷🇼",conf:"CAF"},
+  {name:"Santo Tomé y Príncipe",flag:"🇸🇹",conf:"CAF"},
+  {name:"Senegal",flag:"🇸🇳",conf:"CAF"},
+  {name:"Seychelles",flag:"🇸🇨",conf:"CAF"},
+  {name:"Sierra Leona",flag:"🇸🇱",conf:"CAF"},
+  {name:"Somalia",flag:"🇸🇴",conf:"CAF"},
+  {name:"Sudáfrica",flag:"🇿🇦",conf:"CAF"},
+  {name:"Sudán",flag:"🇸🇩",conf:"CAF"},
+  {name:"Sudán del Sur",flag:"🇸🇸",conf:"CAF"},
+  {name:"Tanzania",flag:"🇹🇿",conf:"CAF"},
+  {name:"Togo",flag:"🇹🇬",conf:"CAF"},
+  {name:"Túnez",flag:"🇹🇳",conf:"CAF"},
+  {name:"Uganda",flag:"🇺🇬",conf:"CAF"},
+  {name:"Yibuti",flag:"🇩🇯",conf:"CAF"},
+  {name:"Zambia",flag:"🇿🇲",conf:"CAF"},
+  {name:"Zimbabue",flag:"🇿🇼",conf:"CAF"},
+  // AFC
+  {name:"Afganistán",flag:"🇦🇫",conf:"AFC"},
+  {name:"Arabia Saudita",flag:"🇸🇦",conf:"AFC"},
+  {name:"Bahréin",flag:"🇧🇭",conf:"AFC"},
+  {name:"Bangladés",flag:"🇧🇩",conf:"AFC"},
+  {name:"Brunéi",flag:"🇧🇳",conf:"AFC"},
+  {name:"Bután",flag:"🇧🇹",conf:"AFC"},
+  {name:"Camboya",flag:"🇰🇭",conf:"AFC"},
+  {name:"China",flag:"🇨🇳",conf:"AFC"},
+  {name:"Corea del Norte",flag:"🇰🇵",conf:"AFC"},
+  {name:"Corea del Sur",flag:"🇰🇷",conf:"AFC"},
+  {name:"Emiratos Árabes Unidos",flag:"🇦🇪",conf:"AFC"},
+  {name:"Filipinas",flag:"🇵🇭",conf:"AFC"},
+  {name:"Guam",flag:"🇬🇺",conf:"AFC"},
+  {name:"Hong Kong",flag:"🇭🇰",conf:"AFC"},
+  {name:"India",flag:"🇮🇳",conf:"AFC"},
+  {name:"Indonesia",flag:"🇮🇩",conf:"AFC"},
+  {name:"Irak",flag:"🇮🇶",conf:"AFC"},
+  {name:"Irán",flag:"🇮🇷",conf:"AFC"},
+  {name:"Japón",flag:"🇯🇵",conf:"AFC"},
+  {name:"Jordania",flag:"🇯🇴",conf:"AFC"},
+  {name:"Kirguistán",flag:"🇰🇬",conf:"AFC"},
+  {name:"Kuwait",flag:"🇰🇼",conf:"AFC"},
+  {name:"Laos",flag:"🇱🇦",conf:"AFC"},
+  {name:"Líbano",flag:"🇱🇧",conf:"AFC"},
+  {name:"Macao",flag:"🇲🇴",conf:"AFC"},
+  {name:"Malasia",flag:"🇲🇾",conf:"AFC"},
+  {name:"Maldivas",flag:"🇲🇻",conf:"AFC"},
+  {name:"Mongolia",flag:"🇲🇳",conf:"AFC"},
+  {name:"Myanmar",flag:"🇲🇲",conf:"AFC"},
+  {name:"Nepal",flag:"🇳🇵",conf:"AFC"},
+  {name:"Omán",flag:"🇴🇲",conf:"AFC"},
+  {name:"Pakistán",flag:"🇵🇰",conf:"AFC"},
+  {name:"Palestina",flag:"🇵🇸",conf:"AFC"},
+  {name:"Qatar",flag:"🇶🇦",conf:"AFC"},
+  {name:"Singapur",flag:"🇸🇬",conf:"AFC"},
+  {name:"Siria",flag:"🇸🇾",conf:"AFC"},
+  {name:"Sri Lanka",flag:"🇱🇰",conf:"AFC"},
+  {name:"Taiwán",flag:"🇹🇼",conf:"AFC"},
+  {name:"Tailandia",flag:"🇹🇭",conf:"AFC"},
+  {name:"Tayikistán",flag:"🇹🇯",conf:"AFC"},
+  {name:"Timor Oriental",flag:"🇹🇱",conf:"AFC"},
+  {name:"Turkmenistán",flag:"🇹🇲",conf:"AFC"},
+  {name:"Uzbekistán",flag:"🇺🇿",conf:"AFC"},
+  {name:"Vietnam",flag:"🇻🇳",conf:"AFC"},
+  {name:"Yemen",flag:"🇾🇪",conf:"AFC"},
+  // OFC
+  {name:"Australia",flag:"🇦🇺",conf:"OFC"},
+  {name:"Fiyi",flag:"🇫🇯",conf:"OFC"},
+  {name:"Islas Cook",flag:"🇨🇰",conf:"OFC"},
+  {name:"Islas Salomón",flag:"🇸🇧",conf:"OFC"},
+  {name:"Nueva Caledonia",flag:"🇳🇨",conf:"OFC"},
+  {name:"Nueva Zelanda",flag:"🇳🇿",conf:"OFC"},
+  {name:"Papúa Nueva Guinea",flag:"🇵🇬",conf:"OFC"},
+  {name:"Samoa",flag:"🇼🇸",conf:"OFC"},
+  {name:"Samoa Americana",flag:"🇦🇸",conf:"OFC"},
+  {name:"Tahití",flag:"🇵🇫",conf:"OFC"},
+  {name:"Tonga",flag:"🇹🇴",conf:"OFC"},
+  {name:"Vanuatu",flag:"🇻🇺",conf:"OFC"},
+];
+
+// Función helper: busca un país por nombre (parcial, case-insensitive)
+const searchCountries = (query) => {
+  if (!query?.trim()) return FIFA_COUNTRIES;
+  const q = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  return FIFA_COUNTRIES.filter(c =>
+    c.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes(q)
+  );
+};
+
+// Combina nombre + bandera: "Argentina 🇦🇷"
+const countryLabel = (c) => `${c.name} ${c.flag}`;
+
+
 
 const SEED_USERS = [
   {id:"u1",username:"admin",  passwordHash:"demo_hash",role:"admin", avatar:"🏆",active:true,createdAt:"2024-01-01"},
@@ -2140,12 +2378,135 @@ function TournamentLobby({user,token,onSelect,showToast}){
 }
 
 // ============================================================
+// COUNTRY PICKER
+// ============================================================
+function CountryPicker({ value, onChange, placeholder }) {
+  const [query, setQuery]    = useState("");
+  const [open, setOpen]      = useState(false);
+  const [hl, setHl]          = useState(-1);
+  const containerRef         = useRef(null);
+  const inputRef             = useRef(null);
+
+  const filtered = query.trim() === ""
+    ? FIFA_COUNTRIES
+    : FIFA_COUNTRIES.filter(c =>
+        c.name.toLowerCase().includes(query.toLowerCase()) ||
+        c.conf.toLowerCase().includes(query.toLowerCase())
+      );
+
+  const CONF_ORDER  = ["CONMEBOL","UEFA","CONCACAF","CAF","AFC","OFC"];
+  const CONF_LABELS = { CONMEBOL:"🌎 CONMEBOL", UEFA:"🇪🇺 UEFA", CONCACAF:"🏝 CONCACAF", CAF:"🌍 CAF", AFC:"🌏 AFC", OFC:"🌊 OFC" };
+  const grouped = query.trim() === "";
+
+  const handleSelect = (c) => {
+    onChange(c.name + " " + c.flag);
+    setOpen(false); setQuery(""); setHl(-1);
+  };
+
+  const handleKeyDown = (e) => {
+    if (!open) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setHl(h => Math.min(h+1, filtered.length-1)); }
+    if (e.key === "ArrowUp")   { e.preventDefault(); setHl(h => Math.max(h-1, 0)); }
+    if (e.key === "Enter" && hl >= 0) handleSelect(filtered[hl]);
+    if (e.key === "Escape") setOpen(false);
+  };
+
+  useEffect(() => {
+    const h = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  useEffect(() => { if (open && inputRef.current) inputRef.current.focus(); }, [open]);
+
+  let fi = -1;
+
+  return (
+    <div ref={containerRef} style={{ position:"relative" }}>
+      <button type="button" onClick={() => setOpen(o => !o)} style={{
+        width:"100%", background:"var(--bg)", border:"1px solid "+(open?"var(--gold)":"var(--bd)"),
+        borderRadius:2, padding:"10px 14px", color:value?"var(--tx)":"var(--tx3)",
+        fontFamily:"Barlow,sans-serif", fontSize:14, textAlign:"left", cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, transition:"border-color .2s",
+      }}>
+        <span>{value || <span style={{color:"var(--tx3)"}}>{placeholder||"Seleccioná un país..."}</span>}</span>
+        <span style={{color:"var(--tx3)",fontSize:10}}>{open?"▲":"▼"}</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position:"absolute", top:"calc(100% + 4px)", left:0, right:0, zIndex:9999,
+          background:"var(--sf)", border:"1px solid var(--gold)", borderRadius:2,
+          boxShadow:"0 8px 32px rgba(0,0,0,.6)", overflow:"hidden",
+        }}>
+          <div style={{padding:"8px 10px", borderBottom:"1px solid var(--bd)", background:"var(--sf2)"}}>
+            <input ref={inputRef} value={query} onChange={e=>{setQuery(e.target.value);setHl(0);}}
+              onKeyDown={handleKeyDown} placeholder="🔍 Buscar país..."
+              style={{width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:2,
+                padding:"7px 10px",color:"var(--tx)",fontFamily:"Barlow,sans-serif",fontSize:13,outline:"none"}}/>
+          </div>
+          {value&&(
+            <div onClick={()=>{onChange("");setOpen(false);setQuery("");}}
+              style={{padding:"7px 14px",cursor:"pointer",fontSize:11,color:"var(--tx3)",
+                borderBottom:"1px solid var(--bd)",fontFamily:"Barlow Condensed,sans-serif",letterSpacing:1}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,68,68,.08)"}
+              onMouseLeave={e=>e.currentTarget.style.background=""}>
+              ✕ Limpiar selección
+            </div>
+          )}
+          <div style={{maxHeight:260,overflowY:"auto"}}>
+            {filtered.length===0?(
+              <div style={{padding:16,textAlign:"center",color:"var(--tx3)",fontSize:12}}>Sin resultados</div>
+            ):grouped?(
+              CONF_ORDER.map(conf=>{
+                const items=filtered.filter(c=>c.conf===conf);
+                if(!items.length) return null;
+                return(
+                  <div key={conf}>
+                    <div style={{padding:"5px 14px 3px",fontSize:9,letterSpacing:2,textTransform:"uppercase",
+                      color:"var(--tx3)",fontFamily:"Barlow Condensed,sans-serif",fontWeight:600,
+                      background:"var(--sf2)",borderTop:"1px solid var(--bd)"}}>
+                      {CONF_LABELS[conf]}
+                    </div>
+                    {items.map(c=>{fi++;const idx=fi;return(
+                      <div key={c.name} onClick={()=>handleSelect(c)}
+                        style={{padding:"7px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,
+                          fontSize:13,background:idx===hl?"rgba(201,168,76,.12)":"",transition:"background .1s"}}
+                        onMouseEnter={()=>setHl(idx)}>
+                        <span style={{fontSize:18,lineHeight:1}}>{c.flag}</span>
+                        <span style={{flex:1}}>{c.name}</span>
+                        <span style={{fontSize:9,color:"var(--tx3)",fontFamily:"Barlow Condensed,sans-serif",letterSpacing:1}}>{c.conf}</span>
+                      </div>
+                    );})}
+                  </div>
+                );
+              })
+            ):(
+              filtered.map((c,i)=>(
+                <div key={c.name} onClick={()=>handleSelect(c)}
+                  style={{padding:"7px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:10,
+                    fontSize:13,background:i===hl?"rgba(201,168,76,.12)":"",
+                    borderBottom:"1px solid var(--bd)",transition:"background .1s"}}
+                  onMouseEnter={()=>setHl(i)}>
+                  <span style={{fontSize:18,lineHeight:1}}>{c.flag}</span>
+                  <span style={{flex:1}}>{c.name}</span>
+                  <span style={{fontSize:9,color:"var(--tx3)",fontFamily:"Barlow Condensed,sans-serif",letterSpacing:1}}>{c.conf}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // EDIT MATCH MODAL
 // ============================================================
-function EditMatchModal({ match, tId, token, onClose, onSaved, showToast }) {
+function EditMatchModal({ match, tId, token, onClose, onSaved, showToast: showToastFn }) {
   const { matches: matchSvc } = useServices();
   const isTBD = v => v?.startsWith("TBD:");
-  const stripTBD = v => isTBD(v) ? v.slice(4) : v;
 
   const [form, setForm] = useState({
     homeTeam: match.homeTeam || "",
@@ -2155,107 +2516,90 @@ function EditMatchModal({ match, tId, token, onClose, onSaved, showToast }) {
     stage:    match.stage    || "",
     status:   match.status   || "upcoming",
   });
-  const [saving, setSaving] = useState(false);
-  const [err,    setErr]    = useState("");
+  const [homeTBD, setHomeTBD] = useState(isTBD(match.homeTeam));
+  const [awayTBD, setAwayTBD] = useState(isTBD(match.awayTeam));
+  const [saving, setSaving]   = useState(false);
+  const [err, setErr]         = useState("");
 
   const upd = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
-  // Helpers for TBD teams
-  const setTBD = side => setForm(f => ({ ...f, [side]: "TBD:" + stripTBD(f[side]) }));
-  const clearTBD = side => setForm(f => ({ ...f, [side]: stripTBD(f[side]) }));
-  const isTeamTBD = side => isTBD(form[side]);
+  const homeVal = homeTBD
+    ? (form.homeTeam.startsWith("TBD:") ? form.homeTeam : "TBD:"+form.homeTeam)
+    : form.homeTeam;
+  const awayVal = awayTBD
+    ? (form.awayTeam.startsWith("TBD:") ? form.awayTeam : "TBD:"+form.awayTeam)
+    : form.awayTeam;
 
   const handleSave = async () => {
     setErr(""); setSaving(true);
-    const r = await matchSvc.updateMatch(tId, match.id, form, token);
+    const r = await matchSvc.updateMatch(tId, match.id, {...form, homeTeam:homeVal, awayTeam:awayVal}, token);
     setSaving(false);
     if (r.error) { setErr(r.error); return; }
-    showToast("Partido actualizado");
-    onSaved(r.match);
-    onClose();
+    showToastFn && showToastFn("Partido actualizado");
+    onSaved(r.match); onClose();
   };
 
-  return (
-    <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" style={{ maxWidth: 500 }}>
-        <div className="modal-hdr">
-          <div className="modal-title" style={{ color: "#ff8888" }}>✏️ EDITAR PARTIDO</div>
-          <button className="btn btn-ghost" style={{ padding: "3px 9px", fontSize: 15 }} onClick={onClose}>✕</button>
-        </div>
-        <div className="modal-body">
-          {err && <div className="msg-err">{err}</div>}
+  const TeamField = ({ side, label }) => {
+    const isTBDMode  = side==="home" ? homeTBD : awayTBD;
+    const setTBDMode = side==="home" ? setHomeTBD : setAwayTBD;
+    const teamVal    = side==="home" ? form.homeTeam : form.awayTeam;
+    const setTeamVal = v => setForm(f=>({...f,[side==="home"?"homeTeam":"awayTeam"]:v}));
+    const cleanVal   = teamVal.startsWith("TBD:") ? teamVal.slice(4) : teamVal;
 
-          {/* Equipos */}
-          <div className="edit-match-grid">
-            {/* Local */}
-            <div className="field">
-              <label>
-                Equipo local
-                {isTeamTBD("homeTeam") && <span style={{ marginLeft: 6, fontSize: 9, color: "var(--gold)", fontFamily: "Barlow Condensed", letterSpacing: 1 }}>TBD</span>}
-              </label>
-              <div className="team-input-wrap">
-                <input
-                  value={isTeamTBD("homeTeam") ? stripTBD(form.homeTeam) : form.homeTeam}
-                  onChange={e => setForm(f => ({
-                    ...f,
-                    homeTeam: isTBD(f.homeTeam) ? "TBD:" + e.target.value : e.target.value
-                  }))}
-                  placeholder="ej: Argentina 🇦🇷"
-                />
-                {!isTeamTBD("homeTeam") && form.homeTeam && (
-                  <button className="team-clear-btn" onClick={() => setForm(f => ({ ...f, homeTeam: "" }))} title="Limpiar">✕</button>
-                )}
-              </div>
-              <div style={{ marginTop: 4, display: "flex", gap: 6 }}>
-                {isTeamTBD("homeTeam")
-                  ? <button className="tbd-restore-btn" onClick={() => clearTBD("homeTeam")}>✓ Confirmar como equipo real</button>
-                  : <button className="tbd-restore-btn" onClick={() => setTBD("homeTeam")}>↩ Marcar como TBD</button>
-                }
-              </div>
+    return(
+      <div className="field">
+        <label style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span>{label}</span>
+          <button type="button" onClick={()=>{setTBDMode(!isTBDMode);setTeamVal(cleanVal);}} style={{
+            background:isTBDMode?"rgba(201,168,76,.15)":"transparent",
+            border:"1px solid "+(isTBDMode?"rgba(201,168,76,.4)":"var(--bd)"),
+            color:isTBDMode?"var(--gold)":"var(--tx3)", borderRadius:2,
+            padding:"1px 8px", cursor:"pointer", fontFamily:"Barlow Condensed,sans-serif",
+            fontSize:9, letterSpacing:1.5, textTransform:"uppercase", transition:"all .2s",
+          }}>
+            {isTBDMode?"✓ Modo TBD":"Modo TBD"}
+          </button>
+        </label>
+        {isTBDMode?(
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{background:"rgba(201,168,76,.1)",border:"1px solid rgba(201,168,76,.3)",
+                color:"var(--gold)",borderRadius:2,padding:"0 6px",
+                fontFamily:"Barlow Condensed,sans-serif",fontSize:11,letterSpacing:1,whiteSpace:"nowrap"}}>TBD:</span>
+              <input value={cleanVal} onChange={e=>setTeamVal("TBD:"+e.target.value)}
+                placeholder="ej: Ganador Grupo A, Play-off UEFA..."
+                style={{flex:1,background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:2,
+                  padding:"10px 12px",color:"var(--tx)",fontFamily:"Barlow,sans-serif",fontSize:13,outline:"none"}}/>
             </div>
-            {/* Visitante */}
-            <div className="field">
-              <label>
-                Equipo visitante
-                {isTeamTBD("awayTeam") && <span style={{ marginLeft: 6, fontSize: 9, color: "var(--gold)", fontFamily: "Barlow Condensed", letterSpacing: 1 }}>TBD</span>}
-              </label>
-              <div className="team-input-wrap">
-                <input
-                  value={isTeamTBD("awayTeam") ? stripTBD(form.awayTeam) : form.awayTeam}
-                  onChange={e => setForm(f => ({
-                    ...f,
-                    awayTeam: isTBD(f.awayTeam) ? "TBD:" + e.target.value : e.target.value
-                  }))}
-                  placeholder="ej: Francia 🇫🇷"
-                />
-                {!isTeamTBD("awayTeam") && form.awayTeam && (
-                  <button className="team-clear-btn" onClick={() => setForm(f => ({ ...f, awayTeam: "" }))} title="Limpiar">✕</button>
-                )}
-              </div>
-              <div style={{ marginTop: 4, display: "flex", gap: 6 }}>
-                {isTeamTBD("awayTeam")
-                  ? <button className="tbd-restore-btn" onClick={() => clearTBD("awayTeam")}>✓ Confirmar como equipo real</button>
-                  : <button className="tbd-restore-btn" onClick={() => setTBD("awayTeam")}>↩ Marcar como TBD</button>
-                }
-              </div>
+            <div style={{fontSize:10,color:"var(--tx3)",marginTop:4,fontFamily:"Barlow Condensed,sans-serif"}}>
+              No aceptará pronósticos hasta que se asigne el equipo real
             </div>
           </div>
+        ):(
+          <CountryPicker value={teamVal} onChange={setTeamVal} placeholder={"Seleccioná "+label.toLowerCase()+"..."}/>
+        )}
+      </div>
+    );
+  };
 
-          {/* Info del partido */}
-          <div className="edit-match-grid">
-            <div className="field">
-              <label>Fecha</label>
-              <input type="date" value={form.date} onChange={upd("date")} />
-            </div>
-            <div className="field">
-              <label>Hora</label>
-              <input type="time" value={form.time} onChange={upd("time")} />
-            </div>
-            <div className="field full">
-              <label>Etapa</label>
-              <input value={form.stage} onChange={upd("stage")} placeholder="ej: Cuartos de final" />
-            </div>
-            <div className="field full">
+  return(
+    <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className="modal" style={{maxWidth:520}}>
+        <div className="modal-hdr">
+          <div className="modal-title" style={{color:"#ff8888"}}>✏️ EDITAR PARTIDO</div>
+          <button className="btn btn-ghost" style={{padding:"3px 9px",fontSize:15}} onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body" style={{maxHeight:"80vh",overflowY:"auto"}}>
+          {err&&<div className="msg-err">{err}</div>}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:4}}>
+            <TeamField side="home" label="Equipo local"/>
+            <TeamField side="away" label="Equipo visitante"/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:8}}>
+            <div className="field"><label>Fecha</label><input type="date" value={form.date} onChange={upd("date")}/></div>
+            <div className="field"><label>Hora</label><input type="time" value={form.time} onChange={upd("time")}/></div>
+            <div className="field" style={{gridColumn:"span 2"}}><label>Etapa</label><input value={form.stage} onChange={upd("stage")} placeholder="ej: Cuartos de final"/></div>
+            <div className="field" style={{gridColumn:"span 2"}}>
               <label>Estado</label>
               <select value={form.status} onChange={upd("status")}>
                 <option value="upcoming">🟡 Pendiente</option>
@@ -2264,17 +2608,14 @@ function EditMatchModal({ match, tId, token, onClose, onSaved, showToast }) {
               </select>
             </div>
           </div>
-
-          <div style={{ fontSize: 11, color: "var(--tx3)", lineHeight: 1.6, padding: "8px 0 2px" }}>
-            <strong style={{ color: "var(--tx2)" }}>ℹ️ Sobre equipos TBD:</strong> Si el equipo era "TBD:descripción"
-            y lo reemplazás con un nombre real, el cambio se propaga automáticamente
-            a todos los partidos futuros que lo esperaban.
+          <div style={{fontSize:11,color:"var(--tx3)",lineHeight:1.6,padding:"8px 0 2px"}}>
+            <strong style={{color:"var(--tx2)"}}>ℹ️</strong> Si reemplazás un TBD con un equipo real, el cambio se propaga automáticamente a los partidos futuros que lo esperaban.
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
           <button className="btn btn-red" onClick={handleSave} disabled={saving}>
-            {saving ? "GUARDANDO..." : "GUARDAR CAMBIOS"}
+            {saving?"GUARDANDO...":"GUARDAR CAMBIOS"}
           </button>
         </div>
       </div>
@@ -2282,9 +2623,6 @@ function EditMatchModal({ match, tId, token, onClose, onSaved, showToast }) {
   );
 }
 
-// ============================================================
-// MATCH CARD
-// ============================================================
 function MatchCard({match,tId,userId,token,isAdmin,onSave,onAdminSave,onMatchEdited,showToast:showToastFn}){
   const [h,setH]=useState(match.myPrediction?.homeScore?.toString()??"");
   const [a,setA]=useState(match.myPrediction?.awayScore?.toString()??"");
